@@ -64,7 +64,14 @@ class Config:
     cv: CvConfig = field(default_factory=CvConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
+    backtest_overrides: dict = field(default_factory=dict)  # per-asset [backtest.<asset>]
     signal_threshold: float = 0.55
+
+    def backtest_for(self, asset: str) -> BacktestConfig:
+        """Base [backtest] settings with any [backtest.<asset>] overrides applied —
+        portfolio rules are evidence-per-asset, so they are configured per asset."""
+        merged = {**self.backtest.__dict__, **self.backtest_overrides.get(asset, {})}
+        return BacktestConfig(**merged)
 
     @property
     def connection_string(self) -> str:
@@ -99,6 +106,9 @@ def load_config(config_path: str | Path | None = None) -> Config:
         raw = tomllib.loads(path.read_text(encoding="utf-8"))
 
     data = raw.get("data", {})
+    backtest_raw = dict(raw.get("backtest", {}))
+    overrides = {k: backtest_raw.pop(k) for k in list(backtest_raw)
+                 if isinstance(backtest_raw[k], dict)}
     cfg = Config(
         root=root,
         source=data.get("source", "sql"),
@@ -107,7 +117,8 @@ def load_config(config_path: str | Path | None = None) -> Config:
         labels=LabelConfig(**raw.get("labels", {})),
         cv=CvConfig(**raw.get("cv", {})),
         model=ModelConfig(**raw.get("model", {})),
-        backtest=BacktestConfig(**raw.get("backtest", {})),
+        backtest=BacktestConfig(**backtest_raw),
+        backtest_overrides=overrides,
         signal_threshold=raw.get("signals", {}).get("probability_threshold", 0.55),
     )
     cfg.artifacts_dir.mkdir(parents=True, exist_ok=True)

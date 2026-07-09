@@ -195,7 +195,7 @@ def cmd_backtest(cfg: Config, args) -> None:
         sys.exit(f"No OOS predictions at {path} — run `signalengine train --asset {args.asset}` first")
     oos = pd.read_parquet(path)
 
-    bt = cfg.backtest
+    bt = cfg.backtest_for(args.asset)
     threshold = args.threshold if args.threshold is not None else bt.probability_threshold
     result = run_backtest(
         oos, threshold, bt.fee_bps, bt.slippage_bps, bt.max_positions,

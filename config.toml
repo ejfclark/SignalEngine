@@ -34,9 +34,13 @@ probability_threshold = 0.60
 fee_bps = 10.0        # per side
 slippage_bps = 10.0   # per side
 max_positions = 10
-# Adopted 2026-07-09 after variant benchmarking (crypto: Sharpe 0.72 -> 1.3):
-# constant-risk sizing via stop distance, and stand aside when market breadth
-# is hostile. See artifacts/bench/ for the measurements that chose these.
+
+# Portfolio rules are adopted per asset, on that asset's own bench evidence
+# (artifacts/bench/). Crypto: constant-risk sizing + breadth gate lifted OOS
+# Sharpe 0.72 -> 1.3 (2026-07-09). Stocks: the same grid showed no benefit, so
+# stocks keep plain equal sizing until an experiment proves otherwise.
+[backtest.crypto]
+probability_threshold = 0.65
 sizing = "vol"
 risk_pct = 0.01
 gate_column = "breadth_20d"
