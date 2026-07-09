@@ -39,7 +39,8 @@ OUTCOME_TIMEOUT = "timeout"
 
 
 def _label_one_ticker(
-    g: pd.DataFrame, horizon: int, target_mult: float, stop_mult: float
+    g: pd.DataFrame, horizon: int, target_mult: float, stop_mult: float,
+    direction: str = "long",
 ) -> pd.DataFrame:
     n = len(g)
     open_ = g["open"].to_numpy(float)
@@ -48,6 +49,7 @@ def _label_one_ticker(
     close = g["close"].to_numpy(float)
     atr = g["atr_14"].to_numpy(float)
     dates = g["date"].to_numpy()
+    sign = 1.0 if direction == "long" else -1.0
 
     label = np.full(n, np.nan)
     outcome = np.full(n, None, dtype=object)
@@ -67,33 +69,37 @@ def _label_one_ticker(
             entry = close[t]  # feed has no open for this bar: enter at signal close
         if not np.isfinite(entry) or entry <= 0:
             continue
-        tgt = entry + target_mult * atr[t]
-        stp = entry - stop_mult * atr[t]
+        # Shorts mirror the barriers: profit target BELOW entry, stop ABOVE.
+        tgt = entry + sign * target_mult * atr[t]
+        stp = entry - sign * stop_mult * atr[t]
 
         entry_price[t], target_price[t], stop_price[t] = entry, tgt, stp
         hit = False
         for d in range(first, last + 1):
             # Realistic fills: a gap through a barrier fills at the open, not
-            # at the barrier price — unfavorable for stops (gap down), and
-            # favorable for targets (gap up). The open is checked before the
-            # intraday range so overnight gaps resolve the both-hit ambiguity.
+            # at the barrier price — unfavorable for stops, favorable for
+            # targets. The open is checked before the intraday range so
+            # overnight gaps resolve the both-hit ambiguity. `sign` flips the
+            # comparisons for shorts (stop above entry, target below).
             day_open = open_[d] if np.isfinite(open_[d]) and open_[d] > 0 else None
-            if day_open is not None and day_open <= stp:
+            if day_open is not None and sign * (day_open - stp) <= 0:
                 label[t], outcome[t] = 0.0, OUTCOME_STOP
                 exit_price[t], exit_idx[t] = day_open, d
                 hit = True
                 break
-            if day_open is not None and day_open >= tgt:
+            if day_open is not None and sign * (day_open - tgt) >= 0:
                 label[t], outcome[t] = 1.0, OUTCOME_TARGET
                 exit_price[t], exit_idx[t] = day_open, d
                 hit = True
                 break
-            if low[d] <= stp:  # both-hit day counts as stop (conservative)
+            bar_stop = low[d] if sign > 0 else high[d]
+            bar_target = high[d] if sign > 0 else low[d]
+            if sign * (bar_stop - stp) <= 0:  # both-hit day counts as stop (conservative)
                 label[t], outcome[t] = 0.0, OUTCOME_STOP
                 exit_price[t], exit_idx[t] = stp, d
                 hit = True
                 break
-            if high[d] >= tgt:
+            if sign * (bar_target - tgt) >= 0:
                 label[t], outcome[t] = 1.0, OUTCOME_TARGET
                 exit_price[t], exit_idx[t] = tgt, d
                 hit = True
@@ -112,7 +118,8 @@ def _label_one_ticker(
     out["stop_price"] = stop_price
     out["target_price"] = target_price
     out["exit_price"] = exit_price
-    out["trade_return"] = exit_price / entry_price - 1.0
+    # P&L in the trade's own direction: a short profits when exit < entry.
+    out["trade_return"] = sign * (exit_price / entry_price - 1.0)
     out["exit_date"] = pd.Series(
         [dates[i] if i >= 0 else pd.NaT for i in exit_idx], index=g.index
     )
@@ -120,11 +127,12 @@ def _label_one_ticker(
 
 
 def apply_triple_barrier(
-    panel: pd.DataFrame, horizon: int = 10, target_mult: float = 3.0, stop_mult: float = 1.5
+    panel: pd.DataFrame, horizon: int = 10, target_mult: float = 3.0, stop_mult: float = 1.5,
+    direction: str = "long",
 ) -> pd.DataFrame:
     """Label a multi-ticker panel (needs open/high/low/close/atr_14, sorted by date)."""
     parts = [
-        _label_one_ticker(g, horizon, target_mult, stop_mult)
+        _label_one_ticker(g, horizon, target_mult, stop_mult, direction)
         for _, g in panel.groupby("ticker", sort=False)
     ]
     return pd.concat(parts, ignore_index=True)

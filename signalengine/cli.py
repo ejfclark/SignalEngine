@@ -56,13 +56,13 @@ def _merge_fundamentals(prices: pd.DataFrame, fundamentals: pd.DataFrame) -> pd.
     return merged.reset_index(drop=True)
 
 
-def build_dataset(cfg: Config, asset: str) -> pd.DataFrame:
+def build_dataset(cfg: Config, asset: str, direction: str = "long") -> pd.DataFrame:
     source = get_source(cfg)
     if asset == "stock":
         prices = _merge_fundamentals(source.load_stock_prices(), source.load_stock_fundamentals())
     else:
         prices = source.load_crypto_prices()
-    print(f"{asset}: {len(prices):,} price rows, {prices['ticker'].nunique()} tickers, "
+    print(f"{asset} ({direction}): {len(prices):,} price rows, {prices['ticker'].nunique()} tickers, "
           f"{prices['date'].min().date()} -> {prices['date'].max().date()}")
 
     features = build_features(
@@ -81,6 +81,7 @@ def build_dataset(cfg: Config, asset: str) -> pd.DataFrame:
         horizon=cfg.labels.horizon_days,
         target_mult=cfg.labels.target_atr_mult,
         stop_mult=cfg.labels.stop_atr_mult,
+        direction=direction,
     )
     n = labeled["label"].notna().sum()
     print(f"{asset}: {n:,} labeled rows, base rate {labeled['label'].mean():.3f}")
@@ -216,7 +217,7 @@ def cmd_backtest(cfg: Config, args) -> None:
 def cmd_bench(cfg: Config, args) -> None:
     from .bench import run_bench
 
-    payload = run_bench(cfg, args.asset, args.name)
+    payload = run_bench(cfg, args.asset, args.name, args.direction)
     print(f"\nbench '{args.name}' ({args.asset}): mean AUC {payload['mean_auc']:.4f}, "
           f"min AUC {payload['min_auc']:.4f}")
     for thr, stats in payload["backtests"].items():
@@ -286,6 +287,7 @@ def main() -> None:
     p_bench = sub.add_parser("bench", help="train+backtest, write metrics for comparison")
     p_bench.add_argument("--name", required=True)
     p_bench.add_argument("--asset", choices=ASSETS, default="stock")
+    p_bench.add_argument("--direction", choices=["long", "short"], default="long")
     p_cmp = sub.add_parser("bench-compare", help="compare two bench runs")
     p_cmp.add_argument("base")
     p_cmp.add_argument("experiment")

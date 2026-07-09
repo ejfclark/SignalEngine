@@ -68,7 +68,9 @@ def run_backtest(
     if sizing == "vol":
         # Constant risk per trade: tighter stop -> bigger position. Weight is
         # capped at 2 equal-slots so one calm name can't dominate the book.
-        stop_distance = (trades["entry_price"] - trades["stop_price"]) / trades["entry_price"]
+        stop_distance = (
+            (trades["entry_price"] - trades["stop_price"]).abs() / trades["entry_price"]
+        )
         trades["weight"] = (risk_pct / stop_distance.clip(lower=1e-4)).clip(
             upper=2.0 / max_positions
         )

@@ -26,11 +26,11 @@ from .config import Config
 THRESHOLDS = [0.55, 0.60, 0.65, 0.70]
 
 
-def run_bench(cfg: Config, asset: str, name: str) -> dict:
+def run_bench(cfg: Config, asset: str, name: str, direction: str = "long") -> dict:
     from .cli import build_dataset
     from .model.train import train_walk_forward
 
-    labeled = build_dataset(cfg, asset)
+    labeled = build_dataset(cfg, asset, direction)
     result = train_walk_forward(labeled, cfg)
 
     folds = result.fold_metrics.to_dict("records")
@@ -48,6 +48,7 @@ def run_bench(cfg: Config, asset: str, name: str) -> dict:
     payload = {
         "name": name,
         "asset": asset,
+        "direction": direction,
         "run_at": datetime.now().isoformat(timespec="seconds"),
         "labeled_rows": int(labeled["label"].notna().sum()),
         "mean_auc": float(np.nanmean([f["auc"] for f in folds])),
@@ -61,7 +62,9 @@ def run_bench(cfg: Config, asset: str, name: str) -> dict:
     }
     out_dir = cfg.artifacts_dir / "bench"
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / f"{name}_{asset}.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    tag = asset if direction == "long" else f"{asset}-{direction}"
+    (out_dir / f"{name}_{tag}.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    result.oos.to_parquet(out_dir / f"{name}_{tag}_oos.parquet", index=False)
     return payload
 
 
