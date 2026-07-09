@@ -1,0 +1,9 @@
+[Unit]
+Description=Run SignalEngine retrain + signals after the nightly ingest
+
+[Timer]
+OnCalendar=Mon..Sat 23:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,39 @@
+# SignalEngine configuration. Every value here can be left at default;
+# the CLI --asset flag picks which universe a command runs against.
+
+[data]
+# "parquet" reads the local lake written by `signalengine export-parquet` (fast, no DB).
+# "sql" reads the EdStock database directly (connection string from EDSTOCK_CONN env / .env).
+source = "parquet"
+parquet_dir = "data/parquet"
+artifacts_dir = "artifacts"
+
+[labels]
+# Triple-barrier: from entry (next day's open), take-profit at +target_atr_mult * ATR14,
+# stop-loss at -stop_atr_mult * ATR14, give up after horizon_days trading days.
+# 3.0 / 1.5 = a 2:1 reward:risk swing trade.
+horizon_days = 10
+target_atr_mult = 3.0
+stop_atr_mult = 1.5
+
+[cv]
+# Purged walk-forward: n_folds contiguous test blocks, train strictly before each,
+# with purge_days (>= label horizon) dropped from the end of train to stop label leakage.
+n_folds = 5
+purge_days = 10
+
+[model]
+n_estimators = 400
+learning_rate = 0.05
+num_leaves = 63
+min_child_samples = 50
+
+[backtest]
+# Only out-of-sample predictions are ever backtested.
+probability_threshold = 0.60
+fee_bps = 10.0        # per side
+slippage_bps = 10.0   # per side
+max_positions = 10
+
+[signals]
+probability_threshold = 0.55

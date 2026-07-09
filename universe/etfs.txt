@@ -1,0 +1,13 @@
+# Sector ETFs + SPY for relative-strength features
+SPY
+XLB
+XLC
+XLE
+XLF
+XLI
+XLK
+XLP
+XLRE
+XLU
+XLV
+XLY

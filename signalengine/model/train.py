@@ -1,0 +1,128 @@
+"""LightGBM training over the labeled feature panel.
+
+Output of training is twofold:
+  1. Out-of-sample predictions for every walk-forward test block — the ONLY
+     predictions the backtest is allowed to see.
+  2. A final model fitted on all labeled data — used for live signal generation.
+
+Metrics to care about, in order: AUC vs 0.5 (any edge at all?), then
+precision at the trading threshold vs the base rate (is the top of the
+probability distribution actually enriched?). Accuracy is meaningless here.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import joblib
+import numpy as np
+import pandas as pd
+from lightgbm import LGBMClassifier
+from sklearn.metrics import roc_auc_score
+
+from ..config import Config
+from ..features.pipeline import FEATURE_COLUMNS
+from .splits import purged_walk_forward
+
+MODEL_FILE = "model.joblib"
+PREDICTIONS_FILE = "oos_predictions.parquet"
+IMPORTANCE_FILE = "feature_importance.csv"
+
+
+@dataclass
+class TrainResult:
+    fold_metrics: pd.DataFrame
+    oos: pd.DataFrame  # meta + label + predicted probability, out-of-sample only
+    model: LGBMClassifier
+    importance: pd.DataFrame = field(repr=False, default=None)
+
+
+def _make_model(cfg: Config, y_train: np.ndarray) -> LGBMClassifier:
+    pos = max(int(y_train.sum()), 1)
+    neg = max(len(y_train) - pos, 1)
+    return LGBMClassifier(
+        n_estimators=cfg.model.n_estimators,
+        learning_rate=cfg.model.learning_rate,
+        num_leaves=cfg.model.num_leaves,
+        min_child_samples=cfg.model.min_child_samples,
+        subsample=0.8,
+        subsample_freq=1,
+        colsample_bytree=0.8,
+        scale_pos_weight=neg / pos,
+        random_state=42,
+        verbosity=-1,
+    )
+
+
+def train_walk_forward(labeled: pd.DataFrame, cfg: Config) -> TrainResult:
+    data = labeled.dropna(subset=["label"]).reset_index(drop=True)
+    if data.empty:
+        raise ValueError("No labeled rows — is the price history long enough for the horizon?")
+
+    X = data[FEATURE_COLUMNS]
+    y = data["label"].to_numpy()
+
+    fold_rows = []
+    oos_parts = []
+    threshold = cfg.backtest.probability_threshold
+
+    for fold, (train_mask, test_mask) in enumerate(
+        purged_walk_forward(data["date"], cfg.cv.n_folds, cfg.cv.purge_days)
+    ):
+        if train_mask.sum() < 500 or test_mask.sum() < 100:
+            continue
+        model = _make_model(cfg, y[train_mask])
+        model.fit(X[train_mask], y[train_mask])
+        prob = model.predict_proba(X[test_mask])[:, 1]
+
+        y_test = y[test_mask]
+        flagged = prob >= threshold
+        fold_rows.append({
+            "fold": fold,
+            "train_rows": int(train_mask.sum()),
+            "test_rows": int(test_mask.sum()),
+            "test_start": data.loc[test_mask, "date"].min().date(),
+            "test_end": data.loc[test_mask, "date"].max().date(),
+            "base_rate": float(y_test.mean()),
+            "auc": float(roc_auc_score(y_test, prob)) if len(np.unique(y_test)) > 1 else np.nan,
+            "flagged": int(flagged.sum()),
+            f"precision@{threshold:.2f}": float(y_test[flagged].mean()) if flagged.any() else np.nan,
+        })
+
+        part = data.loc[test_mask, ["ticker", "date", "label", "outcome", "entry_price",
+                                    "stop_price", "target_price", "exit_price",
+                                    "exit_date", "trade_return", "close"]].copy()
+        part["probability"] = prob
+        part["fold"] = fold
+        oos_parts.append(part)
+
+    if not oos_parts:
+        raise ValueError("No usable folds — not enough data for the configured n_folds.")
+
+    final_model = _make_model(cfg, y)
+    final_model.fit(X, y)
+
+    importance = (
+        pd.DataFrame({"feature": FEATURE_COLUMNS, "importance": final_model.feature_importances_})
+        .sort_values("importance", ascending=False)
+        .reset_index(drop=True)
+    )
+
+    return TrainResult(
+        fold_metrics=pd.DataFrame(fold_rows),
+        oos=pd.concat(oos_parts, ignore_index=True),
+        model=final_model,
+        importance=importance,
+    )
+
+
+def save_artifacts(result: TrainResult, directory: Path, asset: str) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    joblib.dump(result.model, directory / f"{asset}_{MODEL_FILE}")
+    result.oos.to_parquet(directory / f"{asset}_{PREDICTIONS_FILE}", index=False)
+    result.importance.to_csv(directory / f"{asset}_{IMPORTANCE_FILE}", index=False)
+
+
+def load_model(directory: Path, asset: str) -> LGBMClassifier:
+    return joblib.load(directory / f"{asset}_{MODEL_FILE}")

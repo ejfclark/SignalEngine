@@ -1,0 +1,12 @@
+[Unit]
+Description=SignalEngine daily data ingest (prices, crypto, funding, macro, context)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=signalengine
+WorkingDirectory=/opt/signalengine
+EnvironmentFile=/etc/signalengine/signalengine.env
+ExecStart=/opt/signalengine/.venv/bin/python -m signalengine.cli ingest daily
+TimeoutStartSec=3600

@@ -1,0 +1,13 @@
+# /etc/cron.d/signalengine — nightly data collection then retrain+signals (UTC).
+# Mon-Sat: US market days plus Saturday for the 24/7 crypto book.
+#
+# Stock/ETF prices come from Tiingo, whose free tier caps at ~50 requests/hour:
+# the price jobs are resumable with a rate-limit circuit breaker, so they run
+# HOURLY through the night, each pass scooping another quota's worth until the
+# universe is current (a Tiingo Power key finishes in one pass; the extra
+# passes then no-op). Yahoo is not an option from here — it blocks datacenter
+# IPs outright. Everything else runs once. Train+signals at 07:00 UTC, well
+# before the US open (13:30 UTC).
+15 22-23,0-6 * * * root cd /srv/signalengine && docker compose run --rm engine sh -c "python -m signalengine.cli ingest stocks && python -m signalengine.cli ingest etfs" >> /var/log/signalengine.log 2>&1
+30 22 * * 1-6 root cd /srv/signalengine && docker compose run --rm engine sh -c "python -m signalengine.cli ingest macro && python -m signalengine.cli ingest markets && python -m signalengine.cli ingest crypto && python -m signalengine.cli ingest funding && python -m signalengine.cli ingest fundamentals" >> /var/log/signalengine.log 2>&1
+0 7 * * 1-6 root cd /srv/signalengine && docker compose run --rm engine sh -c "python -m signalengine.cli train --asset stock --rebuild && python -m signalengine.cli signals --asset stock && python -m signalengine.cli train --asset crypto --rebuild && python -m signalengine.cli signals --asset crypto" >> /var/log/signalengine.log 2>&1

@@ -1,0 +1,16 @@
+[Unit]
+Description=SignalEngine nightly retrain + signal generation
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=signalengine
+WorkingDirectory=/opt/signalengine
+EnvironmentFile=/etc/signalengine/signalengine.env
+ExecStart=/bin/sh -c '\
+    /opt/signalengine/.venv/bin/python -m signalengine.cli train --asset stock --rebuild && \
+    /opt/signalengine/.venv/bin/python -m signalengine.cli signals --asset stock && \
+    /opt/signalengine/.venv/bin/python -m signalengine.cli train --asset crypto --rebuild && \
+    /opt/signalengine/.venv/bin/python -m signalengine.cli signals --asset crypto'
+TimeoutStartSec=7200

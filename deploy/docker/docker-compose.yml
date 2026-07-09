@@ -1,0 +1,33 @@
+# /srv/signalengine/docker-compose.yml
+# Layout on the server:
+#   /srv/signalengine/app/        the repo (this compose file lives one level up)
+#   /srv/signalengine/data/       the Parquet lake (bind-mounted)
+#   /srv/signalengine/artifacts/  models, OOS predictions, signals CSVs
+#   /srv/signalengine/signalengine.env  secrets (chmod 600)
+services:
+# Secrets are NOT passed via env_file: compose interpolates $ in values, which
+# mangles the scrypt password hash. Instead signalengine.env is mounted as
+# /app/.env — the app parses it raw (signalengine.config.load_dotenv).
+  portal:
+    image: signalengine:latest
+    build: ./app
+    container_name: signalengine-portal
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8050:8050"   # host-mode Caddy proxies the domain to this
+    volumes:
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts
+      - ./signalengine.env:/app/.env:ro
+      - ./universe:/app/universe:ro   # edit ticker lists without rebuilding
+
+  # Batch runner: never long-running, invoked by cron —
+  #   docker compose run --rm engine python -m signalengine.cli ingest daily
+  engine:
+    image: signalengine:latest
+    profiles: ["batch"]
+    volumes:
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts
+      - ./signalengine.env:/app/.env:ro
+      - ./universe:/app/universe:ro

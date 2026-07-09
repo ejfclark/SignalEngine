@@ -1,0 +1,10 @@
+[Unit]
+Description=Run SignalEngine ingest nightly after US close and StockIngest's market job
+
+[Timer]
+# 22:15 UTC: US market closed (21:00 UTC), StockIngest market job done (21:40 UTC)
+OnCalendar=Mon..Sat 22:15 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target
