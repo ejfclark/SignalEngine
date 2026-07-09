@@ -73,14 +73,27 @@ def _label_one_ticker(
         entry_price[t], target_price[t], stop_price[t] = entry, tgt, stp
         hit = False
         for d in range(first, last + 1):
-            stop_hit = low[d] <= stp
-            target_hit = high[d] >= tgt
-            if stop_hit:  # both-hit day counts as stop (conservative)
+            # Realistic fills: a gap through a barrier fills at the open, not
+            # at the barrier price — unfavorable for stops (gap down), and
+            # favorable for targets (gap up). The open is checked before the
+            # intraday range so overnight gaps resolve the both-hit ambiguity.
+            day_open = open_[d] if np.isfinite(open_[d]) and open_[d] > 0 else None
+            if day_open is not None and day_open <= stp:
+                label[t], outcome[t] = 0.0, OUTCOME_STOP
+                exit_price[t], exit_idx[t] = day_open, d
+                hit = True
+                break
+            if day_open is not None and day_open >= tgt:
+                label[t], outcome[t] = 1.0, OUTCOME_TARGET
+                exit_price[t], exit_idx[t] = day_open, d
+                hit = True
+                break
+            if low[d] <= stp:  # both-hit day counts as stop (conservative)
                 label[t], outcome[t] = 0.0, OUTCOME_STOP
                 exit_price[t], exit_idx[t] = stp, d
                 hit = True
                 break
-            if target_hit:
+            if high[d] >= tgt:
                 label[t], outcome[t] = 1.0, OUTCOME_TARGET
                 exit_price[t], exit_idx[t] = tgt, d
                 hit = True
