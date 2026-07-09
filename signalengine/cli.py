@@ -197,7 +197,11 @@ def cmd_backtest(cfg: Config, args) -> None:
 
     bt = cfg.backtest
     threshold = args.threshold if args.threshold is not None else bt.probability_threshold
-    result = run_backtest(oos, threshold, bt.fee_bps, bt.slippage_bps, bt.max_positions)
+    result = run_backtest(
+        oos, threshold, bt.fee_bps, bt.slippage_bps, bt.max_positions,
+        sizing=bt.sizing, risk_pct=bt.risk_pct, top_n=bt.top_n or None,
+        gate_column=bt.gate_column or None, gate_min=bt.gate_min,
+    )
 
     print(f"\nBacktest (OOS only, threshold={threshold}, "
           f"costs={bt.fee_bps + bt.slippage_bps:.0f}bps/side, max {bt.max_positions} positions):")

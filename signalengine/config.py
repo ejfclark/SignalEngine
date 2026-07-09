@@ -47,6 +47,11 @@ class BacktestConfig:
     fee_bps: float = 10.0
     slippage_bps: float = 10.0
     max_positions: int = 10
+    sizing: str = "equal"          # "vol" = risk_pct of equity per trade via stop distance
+    risk_pct: float = 0.01
+    top_n: int = 0                 # 0 = no per-day cap
+    gate_column: str = ""          # e.g. "breadth_20d": skip entries when below gate_min
+    gate_min: float = 0.0
 
 
 @dataclass

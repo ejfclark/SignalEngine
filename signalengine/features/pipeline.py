@@ -16,6 +16,9 @@ FEATURE_COLUMNS = [
     "stoch_k", "stoch_kd_spread", "ema_ribbon",
     "dist_sma20", "dist_sma50", "dist_sma200",
     "volume_z", "gap_pct", "range_pct", "pct_off_high", "pos_in_range",
+    # compression / breakout structure (the quantified content of chart patterns)
+    "atr_ratio_10_60", "bb_width_pctile", "range_contraction", "inside_days_5",
+    "dist_20d_high", "dist_60d_high", "days_since_20d_high", "higher_lows_20", "vol_dryup",
     # fundamentals (stocks only)
     "pe_ratio", "days_to_earnings",
     # cross-sectional: where this ticker sits vs the rest of the universe today

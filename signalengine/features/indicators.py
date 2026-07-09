@@ -133,6 +133,41 @@ def compute_indicators(g: pd.DataFrame) -> pd.DataFrame:
     g["pct_off_high"] = close / roll_max - 1.0
     g["pos_in_range"] = (close - roll_min) / (roll_max - roll_min).replace(0.0, np.nan)
 
+    # Compression / breakout structure — the mechanically meaningful content of
+    # classical chart patterns (cups, flags, squeezes) without template matching:
+    # volatility contraction, tightening ranges, proximity to breakout levels,
+    # base structure, and volume dry-up.
+    atr10 = atr(high, low, close, 10)
+    atr60 = atr(high, low, close, 60)
+    g["atr_ratio_10_60"] = atr10 / atr60.replace(0.0, np.nan)
+
+    sma20 = close.rolling(20).mean()
+    bb_width = (4.0 * close.rolling(20).std()) / sma20.replace(0.0, np.nan)
+    g["bb_width_pctile"] = bb_width.rolling(252, min_periods=60).rank(pct=True)
+
+    tr_range = (high - low)
+    g["range_contraction"] = (
+        tr_range.rolling(5).mean() / tr_range.rolling(20).mean().replace(0.0, np.nan)
+    )
+    inside = ((high < high.shift(1)) & (low > low.shift(1))).astype(float)
+    g["inside_days_5"] = inside.rolling(5).sum()
+
+    high20 = high.rolling(20).max()
+    high60 = high.rolling(60).max()
+    g["dist_20d_high"] = close / high20.replace(0.0, np.nan) - 1.0
+    g["dist_60d_high"] = close / high60.replace(0.0, np.nan) - 1.0
+    is_new_high20 = (high >= high20).astype(int)
+    g["days_since_20d_high"] = (
+        is_new_high20.groupby(is_new_high20.cumsum()).cumcount().astype(float)
+    )
+
+    low5 = low.rolling(5).min()
+    g["higher_lows_20"] = (low5.diff(5) > 0).astype(float).rolling(20).sum() / 4.0
+
+    g["vol_dryup"] = (
+        g["volume"].rolling(5).mean() / g["volume"].rolling(60).mean().replace(0.0, np.nan)
+    )
+
     # Stock fundamentals when present
     if "earnings_date" in g:
         days = (g["earnings_date"] - g["date"]).dt.days
