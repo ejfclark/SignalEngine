@@ -46,34 +46,38 @@ def _login_ok(username: str, password: str) -> bool:
     )
 
 
-def _load_signals(asset: str) -> pd.DataFrame | None:
-    path = cfg.artifacts_dir / f"{asset}_signals.csv"
+def _load_signals(tag: str, short: bool = False) -> pd.DataFrame | None:
+    path = cfg.artifacts_dir / f"{tag}_signals.csv"
     if not path.is_file():
         return None
     df = pd.read_csv(path, parse_dates=["date"])
     df["action"] = "NONE"
-    df.loc[df["probability"] >= WATCH_THRESHOLD, "action"] = "WATCH"
-    df.loc[df["probability"] >= STRONG_THRESHOLD, "action"] = "BUY"
+    if short:
+        # Shorts trade at the strict threshold only — per the combined-book bench.
+        df.loc[df["probability"] >= STRONG_THRESHOLD, "action"] = "SHORT"
+    else:
+        df.loc[df["probability"] >= WATCH_THRESHOLD, "action"] = "WATCH"
+        df.loc[df["probability"] >= STRONG_THRESHOLD, "action"] = "BUY"
     return df.sort_values("probability", ascending=False)
 
 
-def _asset_view(asset: str) -> dict | None:
-    df = _load_signals(asset)
+def _asset_view(tag: str, title: str | None = None, short: bool = False) -> dict | None:
+    df = _load_signals(tag, short)
     if df is None or df.empty:
         return None
     asof = df["date"].max()
     age_days = (pd.Timestamp.now().normalize() - asof.normalize()).days
     return {
-        "name": asset,
+        "name": title or tag,
         "asof": asof.date().isoformat(),
         "stale": age_days > STALE_DAYS,
         "age_days": age_days,
-        "n_buy": int((df["action"] == "BUY").sum()),
+        "n_buy": int(df["action"].isin(("BUY", "SHORT")).sum()),
         "n_watch": int((df["action"] == "WATCH").sum()),
         "top_prob": float(df["probability"].max()),
         "rows": df[df["action"] != "NONE"].head(25).to_dict("records"),
         "mtime": datetime.fromtimestamp(
-            (cfg.artifacts_dir / f"{asset}_signals.csv").stat().st_mtime
+            (cfg.artifacts_dir / f"{tag}_signals.csv").stat().st_mtime
         ).strftime("%Y-%m-%d %H:%M"),
     }
 
@@ -117,6 +121,7 @@ td.num, th.num { text-align: right; }
          padding: 1px 8px; border-radius: 10px; color: #fff; }
 .badge.buy { background: var(--good-badge); }
 .badge.watch { background: #8a6407; }
+.badge.short { background: var(--crit); }
 .stop { color: var(--crit); } .target { color: var(--good); }
 .empty { color: var(--muted); padding: 16px; background: var(--surface);
          border: 1px solid var(--border); border-radius: 8px; }
@@ -169,8 +174,8 @@ WATCH &ge; {{ watch }} &middot; act at next open, stop/target as shown</div>
         <th class="num">Horizon</th>{% if a.rows[0].sector is defined %}<th>Sector</th>{% endif %}</tr>
     {% for r in a.rows %}
     <tr>
-      <td><span class="badge {{ 'buy' if r.action == 'BUY' else 'watch' }}">
-          {{ '▲ BUY' if r.action == 'BUY' else '◔ WATCH' }}</span></td>
+      <td><span class="badge {{ {'BUY': 'buy', 'SHORT': 'short'}.get(r.action, 'watch') }}">
+          {{ {'BUY': '▲ BUY', 'SHORT': '▼ SHORT'}.get(r.action, '◔ WATCH') }}</span></td>
       <td><b>{{ r.ticker }}</b></td>
       <td class="num">{{ '%.0f%%' % (r.probability * 100) }}</td>
       <td class="num">{{ '%.2f' % r.close }}</td>
@@ -214,7 +219,11 @@ def logout():
 def dashboard():
     if "user" not in session:
         return redirect(url_for("login"))
-    assets = [v for v in (_asset_view("stock"), _asset_view("crypto")) if v]
+    assets = [v for v in (
+        _asset_view("stock", "stocks — long"),
+        _asset_view("crypto", "crypto — long"),
+        _asset_view("crypto-short", "crypto — short", short=True),
+    ) if v]
     return render_template_string(
         DASH_HTML, css=BASE_CSS, assets=assets,
         strong=STRONG_THRESHOLD, watch=WATCH_THRESHOLD,

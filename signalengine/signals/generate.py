@@ -15,7 +15,8 @@ from ..features.pipeline import FEATURE_COLUMNS
 
 
 def generate_signals(
-    features: pd.DataFrame, model: LGBMClassifier, cfg: Config, asof: pd.Timestamp | None = None
+    features: pd.DataFrame, model: LGBMClassifier, cfg: Config,
+    asof: pd.Timestamp | None = None, direction: str = "long",
 ) -> pd.DataFrame:
     """features: full feature panel. Scores each ticker's latest row (<= asof)."""
     panel = features if asof is None else features[features["date"] <= asof]
@@ -32,15 +33,18 @@ def generate_signals(
     latest["probability"] = model.predict_proba(latest[FEATURE_COLUMNS])[:, 1]
 
     # Reference levels off the latest close; live entry will be next open.
+    # Shorts mirror: stop above the entry, profit target below.
     tgt_mult, stp_mult = cfg.labels.target_atr_mult, cfg.labels.stop_atr_mult
-    latest["stop"] = latest["close"] - stp_mult * latest["atr_14"]
-    latest["target"] = latest["close"] + tgt_mult * latest["atr_14"]
+    sign = 1.0 if direction == "long" else -1.0
+    latest["stop"] = latest["close"] - sign * stp_mult * latest["atr_14"]
+    latest["target"] = latest["close"] + sign * tgt_mult * latest["atr_14"]
     latest["stop_pct"] = latest["stop"] / latest["close"] - 1.0
     latest["target_pct"] = latest["target"] / latest["close"] - 1.0
     latest["reward_risk"] = tgt_mult / stp_mult
     latest["horizon_days"] = cfg.labels.horizon_days
+    latest["direction"] = direction
 
-    cols = ["ticker", "date", "close", "probability", "stop", "target",
+    cols = ["ticker", "date", "close", "probability", "direction", "stop", "target",
             "stop_pct", "target_pct", "reward_risk", "horizon_days"]
     if "sector" in latest.columns:
         cols.append("sector")

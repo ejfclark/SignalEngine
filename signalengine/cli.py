@@ -37,8 +37,13 @@ from .labels import apply_triple_barrier
 ASSETS = ("stock", "crypto")
 
 
-def _dataset_path(cfg: Config, asset: str) -> Path:
-    return cfg.artifacts_dir / f"{asset}_dataset.parquet"
+def _tag(asset: str, direction: str) -> str:
+    """Artifact naming: 'crypto' for longs (back-compat), 'crypto-short' for shorts."""
+    return asset if direction == "long" else f"{asset}-{direction}"
+
+
+def _dataset_path(cfg: Config, tag: str) -> Path:
+    return cfg.artifacts_dir / f"{tag}_dataset.parquet"
 
 
 def _merge_fundamentals(prices: pd.DataFrame, fundamentals: pd.DataFrame) -> pd.DataFrame:
@@ -88,12 +93,12 @@ def build_dataset(cfg: Config, asset: str, direction: str = "long") -> pd.DataFr
     return labeled
 
 
-def _load_dataset(cfg: Config, asset: str, rebuild: bool) -> pd.DataFrame:
-    path = _dataset_path(cfg, asset)
+def _load_dataset(cfg: Config, asset: str, rebuild: bool, direction: str = "long") -> pd.DataFrame:
+    path = _dataset_path(cfg, _tag(asset, direction))
     if path.is_file() and not rebuild:
         print(f"Using cached dataset {path} (pass --rebuild to refresh)")
         return pd.read_parquet(path)
-    labeled = build_dataset(cfg, asset)
+    labeled = build_dataset(cfg, asset, direction)
     labeled.to_parquet(path, index=False)
     return labeled
 
@@ -175,7 +180,7 @@ def cmd_export_parquet(cfg: Config, _args) -> None:
 def cmd_train(cfg: Config, args) -> None:
     from .model.train import save_artifacts, train_walk_forward
 
-    labeled = _load_dataset(cfg, args.asset, args.rebuild)
+    labeled = _load_dataset(cfg, args.asset, args.rebuild, args.direction)
     result = train_walk_forward(labeled, cfg)
 
     print("\nWalk-forward folds (all metrics out-of-sample):")
@@ -183,7 +188,7 @@ def cmd_train(cfg: Config, args) -> None:
     print("\nTop features:")
     print(result.importance.head(15).to_string(index=False))
 
-    save_artifacts(result, cfg.artifacts_dir, args.asset)
+    save_artifacts(result, cfg.artifacts_dir, _tag(args.asset, args.direction))
     print(f"\nSaved model + OOS predictions to {cfg.artifacts_dir}")
 
 
@@ -191,9 +196,9 @@ def cmd_backtest(cfg: Config, args) -> None:
     from .backtest import run_backtest
     from .model.train import PREDICTIONS_FILE
 
-    path = cfg.artifacts_dir / f"{args.asset}_{PREDICTIONS_FILE}"
+    path = cfg.artifacts_dir / f"{_tag(args.asset, args.direction)}_{PREDICTIONS_FILE}"
     if not path.is_file():
-        sys.exit(f"No OOS predictions at {path} — run `signalengine train --asset {args.asset}` first")
+        sys.exit(f"No OOS predictions at {path} — run `signalengine train` for that asset/direction first")
     oos = pd.read_parquet(path)
 
     bt = cfg.backtest_for(args.asset)
@@ -243,11 +248,12 @@ def cmd_signals(cfg: Config, args) -> None:
     from .model.train import load_model
     from .signals import generate_signals
 
-    labeled = _load_dataset(cfg, args.asset, args.rebuild)
-    model = load_model(cfg.artifacts_dir, args.asset)
+    tag = _tag(args.asset, args.direction)
+    labeled = _load_dataset(cfg, args.asset, args.rebuild, args.direction)
+    model = load_model(cfg.artifacts_dir, tag)
     asof = pd.Timestamp(args.asof) if args.asof else None
 
-    signals = generate_signals(labeled, model, cfg, asof)
+    signals = generate_signals(labeled, model, cfg, asof, direction=args.direction)
     threshold = args.threshold if args.threshold is not None else cfg.signal_threshold
     flagged = signals[signals["probability"] >= threshold]
 
@@ -258,7 +264,7 @@ def cmd_signals(cfg: Config, args) -> None:
     else:
         print(flagged.to_string(index=False, float_format=lambda x: f"{x:.3f}"))
 
-    out = cfg.artifacts_dir / f"{args.asset}_signals.csv"
+    out = cfg.artifacts_dir / f"{tag}_signals.csv"
     signals.to_csv(out, index=False)
     print(f"\nFull ranked list written to {out}")
 
@@ -279,6 +285,7 @@ def main() -> None:
     for name in ("train", "backtest", "signals"):
         p = sub.add_parser(name)
         p.add_argument("--asset", choices=ASSETS, default="stock")
+        p.add_argument("--direction", choices=["long", "short"], default="long")
         p.add_argument("--rebuild", action="store_true", help="rebuild dataset from the data source")
         p.add_argument("--threshold", type=float, default=None)
         if name == "signals":
