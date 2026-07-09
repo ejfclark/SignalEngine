@@ -65,6 +65,42 @@ def run_bench(cfg: Config, asset: str, name: str) -> dict:
     return payload
 
 
+def run_variants(cfg: Config, asset: str) -> None:
+    """Portfolio-level experiments over the SAME model predictions (no retrain):
+    sizing, top-N entry, regime gate. Reads artifacts/<asset>_oos_predictions.parquet
+    (written by `signalengine train`), which carries regime columns."""
+    import pandas as pd
+
+    from .model.train import PREDICTIONS_FILE
+
+    oos = pd.read_parquet(cfg.artifacts_dir / f"{asset}_{PREDICTIONS_FILE}")
+    gate_col = "breadth_20d" if "breadth_20d" in oos.columns else None
+    bt = cfg.backtest
+
+    variants: list[tuple[str, dict]] = [("baseline-equal", {})]
+    variants += [("vol-sizing", {"sizing": "vol"})]
+    variants += [(f"top{n}", {"top_n": n}) for n in (2, 3, 5)]
+    if gate_col:
+        variants += [(f"gate-{gate_col}>={g}", {"gate_column": gate_col, "gate_min": g})
+                     for g in (0.30, 0.40, 0.50)]
+    variants += [("combo: vol+top3+gate0.4",
+                  {"sizing": "vol", "top_n": 3,
+                   **({"gate_column": gate_col, "gate_min": 0.40} if gate_col else {})})]
+
+    print(f"\n{asset} portfolio variants (thresholds {THRESHOLDS}):")
+    header = f"  {'variant':<24} {'thr':>5} {'trades':>7} {'hit':>6} {'expect':>8} {'PF':>6} {'sharpe':>7} {'maxDD':>8} {'return':>9}"
+    print(header)
+    for label, kw in variants:
+        for threshold in THRESHOLDS:
+            s = run_backtest(oos, threshold, bt.fee_bps, bt.slippage_bps,
+                             bt.max_positions, **kw).stats
+            if s.get("n_trades", 0) == 0:
+                continue
+            print(f"  {label:<24} {threshold:>5} {s['n_trades']:>7} {s['hit_rate']:>6.1%} "
+                  f"{s['expectancy']:>8.2%} {s['profit_factor']:>6.2f} {s['sharpe']:>7.2f} "
+                  f"{s['max_drawdown']:>8.1%} {s['total_return']:>9.1%}")
+
+
 def _fmt(v, pct=False):
     if v is None or (isinstance(v, float) and np.isnan(v)):
         return "-"

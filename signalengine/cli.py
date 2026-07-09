@@ -228,6 +228,12 @@ def cmd_bench_compare(cfg: Config, args) -> None:
     compare(cfg, args.asset, args.base, args.experiment)
 
 
+def cmd_bench_variants(cfg: Config, args) -> None:
+    from .bench import run_variants
+
+    run_variants(cfg, args.asset)
+
+
 def cmd_signals(cfg: Config, args) -> None:
     from .model.train import load_model
     from .signals import generate_signals
@@ -280,6 +286,8 @@ def main() -> None:
     p_cmp.add_argument("base")
     p_cmp.add_argument("experiment")
     p_cmp.add_argument("--asset", choices=ASSETS, default="stock")
+    p_var = sub.add_parser("bench-variants", help="portfolio variants over saved OOS predictions")
+    p_var.add_argument("--asset", choices=ASSETS, default="stock")
 
     args = parser.parse_args()
     cfg = load_config(args.config)
@@ -290,7 +298,8 @@ def main() -> None:
      "backtest": cmd_backtest,
      "signals": cmd_signals,
      "bench": cmd_bench,
-     "bench-compare": cmd_bench_compare}[args.command](cfg, args)
+     "bench-compare": cmd_bench_compare,
+     "bench-variants": cmd_bench_variants}[args.command](cfg, args)
 
 
 if __name__ == "__main__":

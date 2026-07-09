@@ -31,6 +31,11 @@ def run_backtest(
     fee_bps: float = 10.0,
     slippage_bps: float = 10.0,
     max_positions: int = 10,
+    sizing: str = "equal",       # "vol": weight = risk_pct / stop distance
+    risk_pct: float = 0.01,      # equity fraction risked per trade when sizing="vol"
+    top_n: int | None = None,    # take only the best N signals per day
+    gate_column: str | None = None,   # regime gate: skip entries when
+    gate_min: float = float("-inf"),  # oos[gate_column] < gate_min
 ) -> BacktestResult:
     cost = 2.0 * (fee_bps + slippage_bps) / 1e4  # round trip, both ways
 
@@ -39,6 +44,10 @@ def run_backtest(
         .sort_values(["date", "probability"], ascending=[True, False])
         .copy()
     )
+    if gate_column is not None and gate_column in candidates.columns:
+        candidates = candidates[candidates[gate_column] >= gate_min]
+    if top_n is not None:
+        candidates = candidates.groupby("date", group_keys=False).head(top_n)
 
     # Greedy portfolio: on each signal date take the highest-probability names
     # while slots are free; a position occupies its slot until its exit date.
@@ -56,10 +65,18 @@ def run_backtest(
 
     trades["net_return"] = trades["trade_return"] - cost
 
-    # Daily equity: each trade contributes 1/max_positions of capital.
-    weight = 1.0 / max_positions
+    if sizing == "vol":
+        # Constant risk per trade: tighter stop -> bigger position. Weight is
+        # capped at 2 equal-slots so one calm name can't dominate the book.
+        stop_distance = (trades["entry_price"] - trades["stop_price"]) / trades["entry_price"]
+        trades["weight"] = (risk_pct / stop_distance.clip(lower=1e-4)).clip(
+            upper=2.0 / max_positions
+        )
+    else:
+        trades["weight"] = 1.0 / max_positions
+
     daily = (
-        trades.groupby("exit_date")["net_return"].sum() * weight
+        (trades["net_return"] * trades["weight"]).groupby(trades["exit_date"]).sum()
     ).sort_index()
     all_days = pd.date_range(oos["date"].min(), oos["exit_date"].max(), freq="D")
     daily = daily.reindex(all_days, fill_value=0.0)
@@ -91,5 +108,6 @@ def run_backtest(
         ),
         "avg_hold_days": (trades["exit_date"] - trades["date"]).dt.days.mean(),
         "round_trip_cost": cost,
+        "avg_weight": trades["weight"].mean(),
     }
     return BacktestResult(trades.reset_index(drop=True), equity, stats)

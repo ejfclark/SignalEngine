@@ -19,24 +19,28 @@ def make_panel(closes, highs=None, lows=None, atr_value=2.0):
 
 
 def test_target_hit_first():
-    # entry at open[1]=100; target=100+3*2=106; stop=100-1.5*2=97
+    # entry at open[1]=100; target=100+3*2=106; stop=100-1.5*2=97.
+    # Day 3 opens at 107 — a favorable gap through the target fills at the open.
     closes = [100, 100, 102, 107, 90, 90, 90, 90, 90, 90, 90, 90]
     highs = [c + 0.5 for c in closes]
     panel = make_panel(closes, highs=highs, lows=closes)
     out = apply_triple_barrier(panel, horizon=10, target_mult=3.0, stop_mult=1.5)
     row = out.iloc[0]
     assert row["label"] == 1.0 and row["outcome"] == "target"
-    assert row["exit_price"] == row["target_price"] == 106.0
-    assert row["trade_return"] == (106.0 / 100.0) - 1.0
+    assert row["target_price"] == 106.0
+    assert row["exit_price"] == 107.0  # gap fill at the open
+    assert row["trade_return"] == (107.0 / 100.0) - 1.0
 
 
 def test_stop_hit_first():
+    # Day 2 opens at 96, gapping through the 97 stop — fills at the open.
     closes = [100, 100, 96, 110, 110, 110, 110, 110, 110, 110, 110, 110]
     panel = make_panel(closes)
     out = apply_triple_barrier(panel, horizon=10, target_mult=3.0, stop_mult=1.5)
     row = out.iloc[0]
     assert row["label"] == 0.0 and row["outcome"] == "stop"
-    assert row["exit_price"] == row["stop_price"] == 97.0
+    assert row["stop_price"] == 97.0
+    assert row["exit_price"] == 96.0  # gap fill at the open
 
 
 def test_both_hit_same_day_is_conservative_stop():

@@ -90,9 +90,11 @@ def train_walk_forward(labeled: pd.DataFrame, cfg: Config) -> TrainResult:
             f"precision@{threshold:.2f}": float(y_test[flagged].mean()) if flagged.any() else np.nan,
         })
 
+        # Regime columns ride along so the backtest can test entry gates.
+        regime_cols = [c for c in ("breadth_20d", "vix", "btc_ret_20d") if c in data.columns]
         part = data.loc[test_mask, ["ticker", "date", "label", "outcome", "entry_price",
                                     "stop_price", "target_price", "exit_price",
-                                    "exit_date", "trade_return", "close"]].copy()
+                                    "exit_date", "trade_return", "close", *regime_cols]].copy()
         part["probability"] = prob
         part["fold"] = fold
         oos_parts.append(part)
