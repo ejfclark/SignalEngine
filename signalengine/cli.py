@@ -209,6 +209,25 @@ def cmd_backtest(cfg: Config, args) -> None:
     print(f"\nTrades written to {trades_path}")
 
 
+def cmd_bench(cfg: Config, args) -> None:
+    from .bench import run_bench
+
+    payload = run_bench(cfg, args.asset, args.name)
+    print(f"\nbench '{args.name}' ({args.asset}): mean AUC {payload['mean_auc']:.4f}, "
+          f"min AUC {payload['min_auc']:.4f}")
+    for thr, stats in payload["backtests"].items():
+        print(f"  thr {thr}: {stats.get('n_trades', 0)} trades, "
+              f"expectancy {stats.get('expectancy', float('nan')):+.2%}, "
+              f"sharpe {stats.get('sharpe', float('nan')):.2f}, "
+              f"maxDD {stats.get('max_drawdown', float('nan')):+.1%}")
+
+
+def cmd_bench_compare(cfg: Config, args) -> None:
+    from .bench import compare
+
+    compare(cfg, args.asset, args.base, args.experiment)
+
+
 def cmd_signals(cfg: Config, args) -> None:
     from .model.train import load_model
     from .signals import generate_signals
@@ -254,6 +273,14 @@ def main() -> None:
         if name == "signals":
             p.add_argument("--asof", help="score as of this date (yyyy-mm-dd), default latest")
 
+    p_bench = sub.add_parser("bench", help="train+backtest, write metrics for comparison")
+    p_bench.add_argument("--name", required=True)
+    p_bench.add_argument("--asset", choices=ASSETS, default="stock")
+    p_cmp = sub.add_parser("bench-compare", help="compare two bench runs")
+    p_cmp.add_argument("base")
+    p_cmp.add_argument("experiment")
+    p_cmp.add_argument("--asset", choices=ASSETS, default="stock")
+
     args = parser.parse_args()
     cfg = load_config(args.config)
 
@@ -261,7 +288,9 @@ def main() -> None:
      "ingest": cmd_ingest,
      "train": cmd_train,
      "backtest": cmd_backtest,
-     "signals": cmd_signals}[args.command](cfg, args)
+     "signals": cmd_signals,
+     "bench": cmd_bench,
+     "bench-compare": cmd_bench_compare}[args.command](cfg, args)
 
 
 if __name__ == "__main__":
