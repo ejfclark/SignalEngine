@@ -126,8 +126,9 @@ def cmd_ingest(cfg: Config, args) -> None:
 
     def stocks():
         from .ingest.stocks import ingest_prices
-        print("stocks:")
-        ingest_prices(lake / "stock_prices.parquet", load_universe(cfg.root, "stocks"), backfill)
+        print(f"stocks ({cfg.stocks_universe}):")
+        ingest_prices(lake / "stock_prices.parquet",
+                      load_universe(cfg.root, cfg.stocks_universe), backfill)
 
     def etfs():
         from .ingest.stocks import ingest_prices
@@ -159,6 +160,14 @@ def cmd_ingest(cfg: Config, args) -> None:
         print("fundamentals:")
         ingest_fundamentals(lake / "stock_fundamentals.parquet", load_universe(cfg.root, "stocks"))
 
+    def news():
+        from .ingest.news import extract_events, ingest_news
+        print("news (tiingo):")
+        universe = load_universe(cfg.root, cfg.stocks_universe) + load_universe(cfg.root, "crypto")
+        ingest_news(lake / "news_raw.parquet", universe,
+                    backfill_days=730 if backfill else 0)
+        extract_events(lake / "news_raw.parquet", lake / "news_events.parquet")
+
     def legacy_snapshot():
         from .ingest.context import legacy_snapshot as snap
         print("legacy-snapshot:")
@@ -166,10 +175,11 @@ def cmd_ingest(cfg: Config, args) -> None:
 
     jobs = {"stocks": stocks, "etfs": etfs, "macro": macro, "markets": markets,
             "crypto": crypto, "funding": funding, "fundamentals": fundamentals,
-            "legacy-snapshot": legacy_snapshot}
+            "news": news, "legacy-snapshot": legacy_snapshot}
     if job == "daily":
         failures = []
-        for name in ("stocks", "etfs", "macro", "markets", "crypto", "funding", "fundamentals"):
+        for name in ("stocks", "etfs", "macro", "markets", "crypto", "funding",
+                     "fundamentals", "news"):
             try:
                 jobs[name]()
             except Exception as e:  # one source down must not kill the nightly run
@@ -322,7 +332,8 @@ def main() -> None:
 
     p_ingest = sub.add_parser("ingest", help="collect data into the Parquet lake")
     p_ingest.add_argument("job", choices=["stocks", "etfs", "macro", "markets", "crypto",
-                                          "funding", "fundamentals", "legacy-snapshot", "daily"])
+                                          "funding", "fundamentals", "news",
+                                          "legacy-snapshot", "daily"])
     p_ingest.add_argument("--backfill", action="store_true", help="full history, not incremental")
 
     for name in ("train", "backtest", "signals"):

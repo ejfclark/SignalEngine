@@ -71,6 +71,9 @@ class Config:
     source: str = "sql"
     parquet_dir: Path = Path("data/parquet")
     artifacts_dir: Path = Path("artifacts")
+    # Which universe file the stock ingest reads: "stocks" (full, Tiingo Power)
+    # or "stocks-core" (fits the free tier's 500-unique-symbols/month cap).
+    stocks_universe: str = "stocks"
     labels: LabelConfig = field(default_factory=LabelConfig)
     labels_overrides: dict = field(default_factory=dict)  # per-book [labels.<tag>]
     cv: CvConfig = field(default_factory=CvConfig)
@@ -79,10 +82,14 @@ class Config:
     backtest_overrides: dict = field(default_factory=dict)  # per-asset [backtest.<asset>]
     signal_threshold: float = 0.55
 
-    def backtest_for(self, asset: str) -> BacktestConfig:
-        """Base [backtest] settings with any [backtest.<asset>] overrides applied —
-        portfolio rules are evidence-per-asset, so they are configured per asset."""
-        merged = {**self.backtest.__dict__, **self.backtest_overrides.get(asset, {})}
+    def backtest_for(self, tag: str) -> BacktestConfig:
+        """Base [backtest] with [backtest.<tag>] overrides. Exact tag first
+        ('crypto-short'), then the base asset ('crypto') — a short book only
+        inherits from its asset when it has no section of its own."""
+        override = self.backtest_overrides.get(tag)
+        if override is None:
+            override = self.backtest_overrides.get(tag.split("-")[0], {})
+        merged = {**self.backtest.__dict__, **override}
         return BacktestConfig(**merged)
 
     def labels_for(self, tag: str) -> LabelConfig:
@@ -135,6 +142,7 @@ def load_config(config_path: str | Path | None = None) -> Config:
         source=data.get("source", "sql"),
         parquet_dir=root / data.get("parquet_dir", "data/parquet"),
         artifacts_dir=root / data.get("artifacts_dir", "artifacts"),
+        stocks_universe=data.get("stocks_universe", "stocks"),
         labels=LabelConfig(**labels_raw),
         labels_overrides=labels_overrides,
         cv=CvConfig(**raw.get("cv", {})),

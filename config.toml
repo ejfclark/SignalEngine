@@ -7,6 +7,10 @@
 source = "parquet"
 parquet_dir = "data/parquet"
 artifacts_dir = "artifacts"
+# License fallback: set to "stocks-core" if ever back on the free Tiingo tier
+# (the full universe exceeds free's 500-unique-symbols/month; the hourly cron
+# retry slots and the rate-limit breaker handle the slower drip automatically).
+stocks_universe = "stocks"
 
 [labels]
 # Triple-barrier: from entry (next day's open), take-profit at +target_atr_mult * ATR14,
@@ -65,6 +69,16 @@ gate_min = 0.30
 # Exp B1: with the candidate filter, 0.65 is the stock sweet spot (Sharpe 1.59).
 [backtest.stock]
 probability_threshold = 0.65
+
+# Shorts trade at the strict threshold only (adopted from the shorts benches);
+# crypto shorts are deliberately UNGATED — breakdowns short fine in any tape.
+[backtest.crypto-short]
+probability_threshold = 0.70
+sizing = "vol"
+risk_pct = 0.01
+
+[backtest.stock-short]
+probability_threshold = 0.70
 
 [signals]
 probability_threshold = 0.55

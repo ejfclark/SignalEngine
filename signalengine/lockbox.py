@@ -55,7 +55,7 @@ def lockbox_eval(cfg: Config, asset: str, direction: str = "long") -> dict:
     scored = lockbox.copy()
     scored["probability"] = model.predict_proba(lockbox[FEATURE_COLUMNS])[:, 1]
 
-    bt = cfg.backtest_for(asset)
+    bt = cfg.backtest_for(tag)
     stats = run_backtest(
         scored, bt.probability_threshold, bt.fee_bps, bt.slippage_bps, bt.max_positions,
         sizing=bt.sizing, risk_pct=bt.risk_pct, top_n=bt.top_n or None,
