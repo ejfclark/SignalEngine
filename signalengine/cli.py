@@ -62,16 +62,22 @@ def _merge_fundamentals(prices: pd.DataFrame, fundamentals: pd.DataFrame) -> pd.
 
 
 def build_dataset(cfg: Config, asset: str, direction: str = "long",
-                  candidate_query: str | None = None) -> pd.DataFrame:
+                  candidate_query: str | None = None,
+                  universe: str | None = None) -> pd.DataFrame:
     """candidate_query is the meta-labeling hook: a pandas query evaluated on
     the labeled feature panel. Rows failing it are dropped BEFORE training, so
     the model learns 'given this setup, does the trade work?' instead of
-    scoring every bar of every ticker every day."""
+    scoring every bar of every ticker every day. `universe` restricts the
+    price panel to a universe file (A/B benching of universe changes)."""
     source = get_source(cfg)
     if asset == "stock":
         prices = _merge_fundamentals(source.load_stock_prices(), source.load_stock_fundamentals())
     else:
         prices = source.load_crypto_prices()
+    if universe:
+        from .ingest.universe import load_universe as _load_u
+        allowed = set(_load_u(cfg.root, universe))
+        prices = prices[prices["ticker"].isin(allowed)].reset_index(drop=True)
     print(f"{asset} ({direction}): {len(prices):,} price rows, {prices['ticker'].nunique()} tickers, "
           f"{prices['date'].min().date()} -> {prices['date'].max().date()}")
 
@@ -274,7 +280,7 @@ def cmd_bench(cfg: Config, args) -> None:
 
     if args.calibrate:
         cfg.model.calibrate = True
-    payload = run_bench(cfg, args.asset, args.name, args.direction, args.query)
+    payload = run_bench(cfg, args.asset, args.name, args.direction, args.query, args.universe)
     print(f"\nbench '{args.name}' ({args.asset}): mean AUC {payload['mean_auc']:.4f}, "
           f"min AUC {payload['min_auc']:.4f}")
     for thr, stats in payload["backtests"].items():
@@ -353,6 +359,8 @@ def main() -> None:
                          help="meta-labeling candidate filter (pandas query on the panel)")
     p_bench.add_argument("--calibrate", action="store_true",
                          help="per-fold isotonic calibration (experiment flag)")
+    p_bench.add_argument("--universe", default=None,
+                         help="restrict to a universe file (A/B universe benching)")
     p_cmp = sub.add_parser("bench-compare", help="compare two bench runs")
     p_cmp.add_argument("base")
     p_cmp.add_argument("experiment")

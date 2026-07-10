@@ -27,11 +27,11 @@ THRESHOLDS = [0.55, 0.60, 0.65, 0.70]
 
 
 def run_bench(cfg: Config, asset: str, name: str, direction: str = "long",
-              candidate_query: str | None = None) -> dict:
+              candidate_query: str | None = None, universe: str | None = None) -> dict:
     from .cli import build_dataset
     from .model.train import train_walk_forward
 
-    labeled = build_dataset(cfg, asset, direction, candidate_query)
+    labeled = build_dataset(cfg, asset, direction, candidate_query, universe)
     from .lockbox import split_lockbox
 
     labeled, held = split_lockbox(cfg, labeled)
