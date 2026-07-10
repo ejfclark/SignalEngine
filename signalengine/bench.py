@@ -26,11 +26,12 @@ from .config import Config
 THRESHOLDS = [0.55, 0.60, 0.65, 0.70]
 
 
-def run_bench(cfg: Config, asset: str, name: str, direction: str = "long") -> dict:
+def run_bench(cfg: Config, asset: str, name: str, direction: str = "long",
+              candidate_query: str | None = None) -> dict:
     from .cli import build_dataset
     from .model.train import train_walk_forward
 
-    labeled = build_dataset(cfg, asset, direction)
+    labeled = build_dataset(cfg, asset, direction, candidate_query)
     result = train_walk_forward(labeled, cfg)
 
     folds = result.fold_metrics.to_dict("records")

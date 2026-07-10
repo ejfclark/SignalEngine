@@ -30,11 +30,29 @@ PREDICTIONS_FILE = "oos_predictions.parquet"
 IMPORTANCE_FILE = "feature_importance.csv"
 
 
+class CalibratedModel:
+    """LightGBM + isotonic mapping, exposing the same predict_proba/
+    feature_importances_ surface the rest of the engine expects."""
+
+    def __init__(self, model, iso):
+        self.model = model
+        self.iso = iso
+
+    def predict_proba(self, X):
+        raw = self.model.predict_proba(X)[:, 1]
+        cal = self.iso.predict(raw)
+        return np.column_stack([1.0 - cal, cal])
+
+    @property
+    def feature_importances_(self):
+        return self.model.feature_importances_
+
+
 @dataclass
 class TrainResult:
     fold_metrics: pd.DataFrame
     oos: pd.DataFrame  # meta + label + predicted probability, out-of-sample only
-    model: LGBMClassifier
+    model: object  # LGBMClassifier or CalibratedModel
     importance: pd.DataFrame = field(repr=False, default=None)
 
 
@@ -67,14 +85,34 @@ def train_walk_forward(labeled: pd.DataFrame, cfg: Config) -> TrainResult:
     oos_parts = []
     threshold = cfg.backtest.probability_threshold
 
+    def fit_predict(train_mask: np.ndarray, predict_X) -> tuple:
+        """Fit (optionally with out-of-time isotonic calibration) and score."""
+        if not cfg.model.calibrate:
+            model = _make_model(cfg, y[train_mask])
+            model.fit(X[train_mask], y[train_mask])
+            return model, None, model.predict_proba(predict_X)[:, 1]
+
+        from sklearn.isotonic import IsotonicRegression
+
+        # Chronological split of the train window: model on the head,
+        # calibration on the tail the model never saw.
+        train_idx = np.flatnonzero(train_mask)
+        order = np.argsort(data.loc[train_idx, "date"].to_numpy())
+        cut = int(len(train_idx) * (1.0 - cfg.model.calibration_frac))
+        head, tail = train_idx[order[:cut]], train_idx[order[cut:]]
+
+        model = _make_model(cfg, y[head])
+        model.fit(X.iloc[head], y[head])
+        iso = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+        iso.fit(model.predict_proba(X.iloc[tail])[:, 1], y[tail])
+        return model, iso, iso.predict(model.predict_proba(predict_X)[:, 1])
+
     for fold, (train_mask, test_mask) in enumerate(
         purged_walk_forward(data["date"], cfg.cv.n_folds, cfg.cv.purge_days)
     ):
         if train_mask.sum() < 500 or test_mask.sum() < 100:
             continue
-        model = _make_model(cfg, y[train_mask])
-        model.fit(X[train_mask], y[train_mask])
-        prob = model.predict_proba(X[test_mask])[:, 1]
+        _, _, prob = fit_predict(train_mask, X[test_mask])
 
         y_test = y[test_mask]
         flagged = prob >= threshold
@@ -102,8 +140,9 @@ def train_walk_forward(labeled: pd.DataFrame, cfg: Config) -> TrainResult:
     if not oos_parts:
         raise ValueError("No usable folds — not enough data for the configured n_folds.")
 
-    final_model = _make_model(cfg, y)
-    final_model.fit(X, y)
+    all_mask = np.ones(len(data), dtype=bool)
+    fitted, iso, _ = fit_predict(all_mask, X.iloc[:1])
+    final_model = CalibratedModel(fitted, iso) if iso is not None else fitted
 
     importance = (
         pd.DataFrame({"feature": FEATURE_COLUMNS, "importance": final_model.feature_importances_})

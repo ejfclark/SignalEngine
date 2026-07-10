@@ -61,7 +61,12 @@ def _merge_fundamentals(prices: pd.DataFrame, fundamentals: pd.DataFrame) -> pd.
     return merged.reset_index(drop=True)
 
 
-def build_dataset(cfg: Config, asset: str, direction: str = "long") -> pd.DataFrame:
+def build_dataset(cfg: Config, asset: str, direction: str = "long",
+                  candidate_query: str | None = None) -> pd.DataFrame:
+    """candidate_query is the meta-labeling hook: a pandas query evaluated on
+    the labeled feature panel. Rows failing it are dropped BEFORE training, so
+    the model learns 'given this setup, does the trade work?' instead of
+    scoring every bar of every ticker every day."""
     source = get_source(cfg)
     if asset == "stock":
         prices = _merge_fundamentals(source.load_stock_prices(), source.load_stock_fundamentals())
@@ -88,6 +93,11 @@ def build_dataset(cfg: Config, asset: str, direction: str = "long") -> pd.DataFr
         stop_mult=cfg.labels.stop_atr_mult,
         direction=direction,
     )
+    if candidate_query:
+        before = len(labeled)
+        labeled = labeled.query(candidate_query).reset_index(drop=True)
+        print(f"{asset}: candidate filter '{candidate_query}' kept "
+              f"{len(labeled):,}/{before:,} rows")
     n = labeled["label"].notna().sum()
     print(f"{asset}: {n:,} labeled rows, base rate {labeled['label'].mean():.3f}")
     return labeled
@@ -235,7 +245,9 @@ def cmd_ledger(cfg: Config, args) -> None:
 def cmd_bench(cfg: Config, args) -> None:
     from .bench import run_bench
 
-    payload = run_bench(cfg, args.asset, args.name, args.direction)
+    if args.calibrate:
+        cfg.model.calibrate = True
+    payload = run_bench(cfg, args.asset, args.name, args.direction, args.query)
     print(f"\nbench '{args.name}' ({args.asset}): mean AUC {payload['mean_auc']:.4f}, "
           f"min AUC {payload['min_auc']:.4f}")
     for thr, stats in payload["backtests"].items():
@@ -308,6 +320,10 @@ def main() -> None:
     p_bench.add_argument("--name", required=True)
     p_bench.add_argument("--asset", choices=ASSETS, default="stock")
     p_bench.add_argument("--direction", choices=["long", "short"], default="long")
+    p_bench.add_argument("--query", default=None,
+                         help="meta-labeling candidate filter (pandas query on the panel)")
+    p_bench.add_argument("--calibrate", action="store_true",
+                         help="per-fold isotonic calibration (experiment flag)")
     p_cmp = sub.add_parser("bench-compare", help="compare two bench runs")
     p_cmp.add_argument("base")
     p_cmp.add_argument("experiment")

@@ -39,6 +39,11 @@ class ModelConfig:
     learning_rate: float = 0.05
     num_leaves: int = 63
     min_child_samples: int = 50
+    # Isotonic calibration: fit on the last calibration_frac of each train
+    # window (out-of-time for the model), so a 0.65 probability means the same
+    # thing in every fold. Off until benched in.
+    calibrate: bool = False
+    calibration_frac: float = 0.2
 
 
 @dataclass
