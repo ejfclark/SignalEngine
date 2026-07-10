@@ -32,6 +32,11 @@ def run_bench(cfg: Config, asset: str, name: str, direction: str = "long",
     from .model.train import train_walk_forward
 
     labeled = build_dataset(cfg, asset, direction, candidate_query)
+    from .lockbox import split_lockbox
+
+    labeled, held = split_lockbox(cfg, labeled)
+    if len(held):
+        print(f"lockbox: {len(held):,} rows from {cfg.cv.lockbox_start} withheld from this bench")
     result = train_walk_forward(labeled, cfg)
 
     folds = result.fold_metrics.to_dict("records")

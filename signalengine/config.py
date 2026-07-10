@@ -33,6 +33,10 @@ class LabelConfig:
 class CvConfig:
     n_folds: int = 5
     purge_days: int = 10
+    # Lockbox holdout: bench/experiment runs never see rows whose trade could
+    # touch dates >= lockbox_start (ISO date string; "" disables). Evaluated
+    # ONCE per frozen system via `signalengine lockbox-eval`, then re-carved.
+    lockbox_start: str = ""
 
 
 @dataclass

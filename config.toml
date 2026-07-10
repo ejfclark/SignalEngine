@@ -32,6 +32,11 @@ candidate_query = "dist_sma200 > 0 and dist_20d_high > -0.10"
 # with purge_days (>= label horizon) dropped from the end of train to stop label leakage.
 n_folds = 5
 purge_days = 10
+# Lockbox: bench/experiments exclude everything from this date on. Spent ONCE
+# per frozen system via `signalengine lockbox-eval`, then move the date forward.
+# (Carved 2026-07-10; note: experiments before this date had seen these months
+# via fold 4 — first eval is a gross-overfit check, the ledger is the clean gate.)
+lockbox_start = "2026-03-15"
 
 [model]
 n_estimators = 400

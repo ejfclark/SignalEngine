@@ -233,6 +233,19 @@ def cmd_backtest(cfg: Config, args) -> None:
     print(f"\nTrades written to {trades_path}")
 
 
+def cmd_lockbox_eval(cfg: Config, args) -> None:
+    from .lockbox import lockbox_eval
+
+    payload = lockbox_eval(cfg, args.asset, args.direction)
+    s = payload["stats"]
+    print(f"\nLOCKBOX {payload['tag']} (from {payload['lockbox_start']}, "
+          f"thr {payload['threshold']}, one shot — now spent):")
+    for key in ("n_trades", "hit_rate", "expectancy", "profit_factor",
+                "sharpe", "max_drawdown", "total_return"):
+        v = s.get(key)
+        print(f"  {key:14s} {v:.4f}" if isinstance(v, float) else f"  {key:14s} {v}")
+
+
 def cmd_ledger(cfg: Config, args) -> None:
     from .ledger import record_signals, report, update_positions
 
@@ -337,6 +350,9 @@ def main() -> None:
     p_var.add_argument("--asset", choices=ASSETS, default="stock")
     p_led = sub.add_parser("ledger", help="paper-trade ledger: live signals vs backtest")
     p_led.add_argument("action", choices=["update", "record", "report"])
+    p_lock = sub.add_parser("lockbox-eval", help="one-shot frozen-system eval on the lockbox")
+    p_lock.add_argument("--asset", choices=ASSETS, default="stock")
+    p_lock.add_argument("--direction", choices=["long", "short"], default="long")
 
     args = parser.parse_args()
     cfg = load_config(args.config)
@@ -349,7 +365,8 @@ def main() -> None:
      "bench": cmd_bench,
      "bench-compare": cmd_bench_compare,
      "bench-variants": cmd_bench_variants,
-     "ledger": cmd_ledger}[args.command](cfg, args)
+     "ledger": cmd_ledger,
+     "lockbox-eval": cmd_lockbox_eval}[args.command](cfg, args)
 
 
 if __name__ == "__main__":
