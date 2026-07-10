@@ -74,6 +74,8 @@ def build_dataset(cfg: Config, asset: str, direction: str = "long",
         prices = _merge_fundamentals(source.load_stock_prices(), source.load_stock_fundamentals())
     else:
         prices = source.load_crypto_prices()
+    if universe is None and asset == "stock":
+        universe = cfg.stocks_model_universe  # collection and modelling universes differ
     if universe:
         from .ingest.universe import load_universe as _load_u
         allowed = set(_load_u(cfg.root, universe))

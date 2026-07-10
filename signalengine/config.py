@@ -74,6 +74,11 @@ class Config:
     # Which universe file the stock ingest reads: "stocks" (full, Tiingo Power)
     # or "stocks-core" (fits the free tier's 500-unique-symbols/month cap).
     stocks_universe: str = "stocks"
+    # Which universe the stock MODEL trains/scores on. A/B bench 2026-07-10:
+    # the expanded universe underperforms while its new tickers lack
+    # fundamentals history (pe_ratio is the top stock feature) — model stays
+    # on core until that gap is filled, collection continues on the full set.
+    stocks_model_universe: str = "stocks-core"
     labels: LabelConfig = field(default_factory=LabelConfig)
     labels_overrides: dict = field(default_factory=dict)  # per-book [labels.<tag>]
     cv: CvConfig = field(default_factory=CvConfig)
@@ -143,6 +148,7 @@ def load_config(config_path: str | Path | None = None) -> Config:
         parquet_dir=root / data.get("parquet_dir", "data/parquet"),
         artifacts_dir=root / data.get("artifacts_dir", "artifacts"),
         stocks_universe=data.get("stocks_universe", "stocks"),
+        stocks_model_universe=data.get("stocks_model_universe", "stocks-core"),
         labels=LabelConfig(**labels_raw),
         labels_overrides=labels_overrides,
         cv=CvConfig(**raw.get("cv", {})),

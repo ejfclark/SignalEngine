@@ -11,6 +11,10 @@ artifacts_dir = "artifacts"
 # (the full universe exceeds free's 500-unique-symbols/month; the hourly cron
 # retry slots and the rate-limit breaker handle the slower drip automatically).
 stocks_universe = "stocks"
+# The stock MODEL stays on core until the S&P additions have fundamentals
+# history (A/B bench 2026-07-10: expansion without pe_ratio coverage degraded
+# Sharpe 1.17 -> 0.66). Collection continues on the full universe regardless.
+stocks_model_universe = "stocks-core"
 
 [labels]
 # Triple-barrier: from entry (next day's open), take-profit at +target_atr_mult * ATR14,
