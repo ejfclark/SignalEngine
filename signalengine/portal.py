@@ -193,6 +193,26 @@ WATCH &ge; {{ watch }} &middot; act at next open, stop/target as shown</div>
 {% else %}
   <div class="empty">No signal files found in artifacts/ yet — run <code>signalengine signals</code>.</div>
 {% endfor %}
+{% if ledger %}
+<h2>paper book — live vs backtest</h2>
+<table>
+  <tr><th>Book</th><th class="num">Open</th><th class="num">Closed</th>
+      <th class="num">Hit rate</th><th class="num">Live expectancy</th><th class="num">Backtest expects</th></tr>
+  {% for r in ledger.rows %}
+  <tr>
+    <td>{{ r.book }}</td>
+    <td class="num">{{ r.open }}</td>
+    <td class="num">{{ r.closed }}</td>
+    <td class="num">{{ '%.0f%%' % (r.hit * 100) if r.hit is not none else '—' }}</td>
+    <td class="num">{{ '%+.2f%%' % (r.expectancy * 100) if r.expectancy is not none else '—' }}</td>
+    <td class="num">{{ '%+.2f%%' % (r.expected * 100) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+<div class="sub" style="margin-top:6px">Virtual positions from nightly signals, filled and closed by the
+same rules the model was trained on. This table is the go/no-go evidence for real money.</div>
+{% endif %}
+
 <div class="sub" style="margin-top:20px">
   {% for a in assets %}{{ a.name }} file updated {{ a.mtime }}{{ ' · ' if not loop.last }}{% endfor %}
 </div>"""
@@ -215,6 +235,29 @@ def logout():
     return redirect(url_for("login"))
 
 
+def _ledger_view() -> dict | None:
+    """Paper book: live evidence vs backtest expectation, straight off the ledger."""
+    path = cfg.root / "data" / "ledger.parquet"
+    if not path.is_file():
+        return None
+    book = pd.read_parquet(path)
+    if book.empty:
+        return None
+    done = book[book["status"].isin(("target", "stop", "timeout"))]
+    rows = []
+    for tag, expected in (("crypto", 0.0085), ("crypto-short", 0.0096), ("stock", 0.003)):
+        fin = done[done["asset"] == tag]
+        n_open = int(book[(book["asset"] == tag)
+                          & book["status"].isin(("pending", "open"))].shape[0])
+        rows.append({
+            "book": tag, "open": n_open, "closed": len(fin),
+            "hit": (fin["net_return"] > 0).mean() if len(fin) else None,
+            "expectancy": fin["net_return"].mean() if len(fin) else None,
+            "expected": expected,
+        })
+    return {"rows": rows, "n_total": len(book)}
+
+
 @app.route("/")
 def dashboard():
     if "user" not in session:
@@ -225,7 +268,7 @@ def dashboard():
         _asset_view("crypto-short", "crypto — short", short=True),
     ) if v]
     return render_template_string(
-        DASH_HTML, css=BASE_CSS, assets=assets,
+        DASH_HTML, css=BASE_CSS, assets=assets, ledger=_ledger_view(),
         strong=STRONG_THRESHOLD, watch=WATCH_THRESHOLD,
     )
 

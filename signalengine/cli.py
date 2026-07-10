@@ -219,6 +219,19 @@ def cmd_backtest(cfg: Config, args) -> None:
     print(f"\nTrades written to {trades_path}")
 
 
+def cmd_ledger(cfg: Config, args) -> None:
+    from .ledger import record_signals, report, update_positions
+
+    if args.action == "update":
+        result = update_positions(cfg)
+        print(f"ledger update: {result['filled']} entries filled, {result['closed']} closed")
+    elif args.action == "record":
+        added = record_signals(cfg)
+        print(f"ledger record: {added} new virtual positions")
+    else:
+        report(cfg)
+
+
 def cmd_bench(cfg: Config, args) -> None:
     from .bench import run_bench
 
@@ -301,6 +314,8 @@ def main() -> None:
     p_cmp.add_argument("--asset", choices=ASSETS, default="stock")
     p_var = sub.add_parser("bench-variants", help="portfolio variants over saved OOS predictions")
     p_var.add_argument("--asset", choices=ASSETS, default="stock")
+    p_led = sub.add_parser("ledger", help="paper-trade ledger: live signals vs backtest")
+    p_led.add_argument("action", choices=["update", "record", "report"])
 
     args = parser.parse_args()
     cfg = load_config(args.config)
@@ -312,7 +327,8 @@ def main() -> None:
      "signals": cmd_signals,
      "bench": cmd_bench,
      "bench-compare": cmd_bench_compare,
-     "bench-variants": cmd_bench_variants}[args.command](cfg, args)
+     "bench-variants": cmd_bench_variants,
+     "ledger": cmd_ledger}[args.command](cfg, args)
 
 
 if __name__ == "__main__":
