@@ -11,10 +11,21 @@ artifacts_dir = "artifacts"
 [labels]
 # Triple-barrier: from entry (next day's open), take-profit at +target_atr_mult * ATR14,
 # stop-loss at -stop_atr_mult * ATR14, give up after horizon_days trading days.
-# 3.0 / 1.5 = a 2:1 reward:risk swing trade.
+# 3.0 / 1.5 = a 2:1 reward:risk swing trade. Per-book overrides below, each
+# adopted from bench evidence (artifacts/bench/).
 horizon_days = 10
 target_atr_mult = 3.0
 stop_atr_mult = 1.5
+
+# Exp D 2026-07-10: barrier sweep selected h15 on early folds (Sharpe 1.68),
+# late folds confirmed (1.42) — crypto longs get more room to work.
+[labels.crypto]
+horizon_days = 15
+
+# Exp B1 2026-07-10: meta-labeling — only score uptrend names near their highs.
+# Stock book went from +0.5%/trade Sharpe 0.6 to +1.1%/trade Sharpe 1.59.
+[labels.stock]
+candidate_query = "dist_sma200 > 0 and dist_20d_high > -0.10"
 
 [cv]
 # Purged walk-forward: n_folds contiguous test blocks, train strictly before each,
@@ -45,6 +56,10 @@ sizing = "vol"
 risk_pct = 0.01
 gate_column = "breadth_20d"
 gate_min = 0.30
+
+# Exp B1: with the candidate filter, 0.65 is the stock sweet spot (Sharpe 1.59).
+[backtest.stock]
+probability_threshold = 0.65
 
 [signals]
 probability_threshold = 0.55

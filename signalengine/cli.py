@@ -86,18 +86,22 @@ def build_dataset(cfg: Config, asset: str, direction: str = "long",
         derivatives=source.load_crypto_derivatives() if asset == "crypto" else None,
         with_market_context=(asset == "stock"),
     )
+    labels = cfg.labels_for(_tag(asset, direction))
+    # Overlapping labels must not leak across the CV boundary: keep the purge
+    # at least as long as this book's horizon.
+    cfg.cv.purge_days = max(cfg.cv.purge_days, labels.horizon_days)
     labeled = apply_triple_barrier(
         features,
-        horizon=cfg.labels.horizon_days,
-        target_mult=cfg.labels.target_atr_mult,
-        stop_mult=cfg.labels.stop_atr_mult,
+        horizon=labels.horizon_days,
+        target_mult=labels.target_atr_mult,
+        stop_mult=labels.stop_atr_mult,
         direction=direction,
     )
-    if candidate_query:
+    query = candidate_query if candidate_query is not None else (labels.candidate_query or None)
+    if query:
         before = len(labeled)
-        labeled = labeled.query(candidate_query).reset_index(drop=True)
-        print(f"{asset}: candidate filter '{candidate_query}' kept "
-              f"{len(labeled):,}/{before:,} rows")
+        labeled = labeled.query(query).reset_index(drop=True)
+        print(f"{asset}: candidate filter '{query}' kept {len(labeled):,}/{before:,} rows")
     n = labeled["label"].notna().sum()
     print(f"{asset}: {n:,} labeled rows, base rate {labeled['label'].mean():.3f}")
     return labeled
@@ -274,6 +278,7 @@ def cmd_signals(cfg: Config, args) -> None:
     from .signals import generate_signals
 
     tag = _tag(args.asset, args.direction)
+    cfg.labels = cfg.labels_for(tag)  # signals report this book's stop/target/horizon
     labeled = _load_dataset(cfg, args.asset, args.rebuild, args.direction)
     model = load_model(cfg.artifacts_dir, tag)
     asof = pd.Timestamp(args.asof) if args.asof else None

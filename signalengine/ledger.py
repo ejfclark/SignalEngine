@@ -36,7 +36,12 @@ LEDGER_FILE = "ledger.parquet"
 BOOKS = {
     "crypto": {"threshold": 0.65, "direction": "long"},
     "crypto-short": {"threshold": 0.70, "direction": "short"},
-    "stock": {"threshold": 0.70, "direction": "long"},  # experimental book
+    # Exp B1 2026-07-10: candidate-filtered stock book, 0.65 threshold.
+    "stock": {"threshold": 0.65, "direction": "long"},
+    # Exp A 2026-07-10: stock shorts rank breakdowns well (AUC 0.607) but only
+    # clear costs at the strict threshold, and live shorting carries borrow/
+    # squeeze costs the backtest can't see — paper evidence first.
+    "stock-short": {"threshold": 0.70, "direction": "short"},
 }
 
 
@@ -89,7 +94,7 @@ def record_signals(cfg: Config) -> int:
                 "stop": float(s["stop"]),
                 "target": float(s["target"]),
                 "horizon_end": s["date"] + pd.Timedelta(days=int(
-                    cfg.labels.horizon_days * 1.6  # trading -> calendar days
+                    cfg.labels_for(tag).horizon_days * 1.6  # trading -> calendar days
                 )),
                 "status": "pending",
                 "exit_date": pd.NaT,

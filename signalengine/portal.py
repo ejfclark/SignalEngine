@@ -245,7 +245,8 @@ def _ledger_view() -> dict | None:
         return None
     done = book[book["status"].isin(("target", "stop", "timeout"))]
     rows = []
-    for tag, expected in (("crypto", 0.0085), ("crypto-short", 0.0096), ("stock", 0.003)):
+    for tag, expected in (("crypto", 0.0085), ("crypto-short", 0.0096),
+                          ("stock", 0.003), ("stock-short", 0.0051)):
         fin = done[done["asset"] == tag]
         n_open = int(book[(book["asset"] == tag)
                           & book["status"].isin(("pending", "open"))].shape[0])
@@ -264,6 +265,7 @@ def dashboard():
         return redirect(url_for("login"))
     assets = [v for v in (
         _asset_view("stock", "stocks — long"),
+        _asset_view("stock-short", "stocks — short", short=True),
         _asset_view("crypto", "crypto — long"),
         _asset_view("crypto-short", "crypto — short", short=True),
     ) if v]

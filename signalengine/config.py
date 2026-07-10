@@ -25,6 +25,8 @@ class LabelConfig:
     horizon_days: int = 10
     target_atr_mult: float = 3.0
     stop_atr_mult: float = 1.5
+    # Meta-labeling: pandas query defining candidate rows; empty = all rows.
+    candidate_query: str = ""
 
 
 @dataclass
@@ -66,6 +68,7 @@ class Config:
     parquet_dir: Path = Path("data/parquet")
     artifacts_dir: Path = Path("artifacts")
     labels: LabelConfig = field(default_factory=LabelConfig)
+    labels_overrides: dict = field(default_factory=dict)  # per-book [labels.<tag>]
     cv: CvConfig = field(default_factory=CvConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
@@ -77,6 +80,12 @@ class Config:
         portfolio rules are evidence-per-asset, so they are configured per asset."""
         merged = {**self.backtest.__dict__, **self.backtest_overrides.get(asset, {})}
         return BacktestConfig(**merged)
+
+    def labels_for(self, tag: str) -> LabelConfig:
+        """Per-book barriers/horizon/candidate filter, e.g. [labels.crypto],
+        [labels.stock]. `tag` is the book tag ('crypto', 'stock-short', ...)."""
+        merged = {**self.labels.__dict__, **self.labels_overrides.get(tag, {})}
+        return LabelConfig(**merged)
 
     @property
     def connection_string(self) -> str:
@@ -114,12 +123,16 @@ def load_config(config_path: str | Path | None = None) -> Config:
     backtest_raw = dict(raw.get("backtest", {}))
     overrides = {k: backtest_raw.pop(k) for k in list(backtest_raw)
                  if isinstance(backtest_raw[k], dict)}
+    labels_raw = dict(raw.get("labels", {}))
+    labels_overrides = {k: labels_raw.pop(k) for k in list(labels_raw)
+                        if isinstance(labels_raw[k], dict)}
     cfg = Config(
         root=root,
         source=data.get("source", "sql"),
         parquet_dir=root / data.get("parquet_dir", "data/parquet"),
         artifacts_dir=root / data.get("artifacts_dir", "artifacts"),
-        labels=LabelConfig(**raw.get("labels", {})),
+        labels=LabelConfig(**labels_raw),
+        labels_overrides=labels_overrides,
         cv=CvConfig(**raw.get("cv", {})),
         model=ModelConfig(**raw.get("model", {})),
         backtest=BacktestConfig(**backtest_raw),
