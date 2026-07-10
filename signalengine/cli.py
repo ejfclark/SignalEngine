@@ -172,7 +172,15 @@ def cmd_ingest(cfg: Config, args) -> None:
         universe = load_universe(cfg.root, cfg.stocks_universe) + load_universe(cfg.root, "crypto")
         ingest_news(lake / "news_raw.parquet", universe,
                     backfill_days=730 if backfill else 0)
-        extract_events(lake / "news_raw.parquet", lake / "news_events.parquet")
+        # Extraction is metered: while universe/news-pilot.txt exists, only
+        # pilot symbols are scored (the news-feature experiment). Delete the
+        # file to extract for everything once the pilot proves the value.
+        try:
+            pilot = load_universe(cfg.root, "news-pilot")
+        except FileNotFoundError:
+            pilot = None
+        extract_events(lake / "news_raw.parquet", lake / "news_events.parquet",
+                       tickers=pilot)
 
     def legacy_snapshot():
         from .ingest.context import legacy_snapshot as snap

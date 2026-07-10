@@ -106,9 +106,12 @@ Title: %%s
 Description: %%s""" % json.dumps(EVENT_TYPES)
 
 
-def extract_events(raw_file: Path, events_file: Path, batch_limit: int = 2000) -> None:
+def extract_events(raw_file: Path, events_file: Path, batch_limit: int = 2000,
+                   tickers: list[str] | None = None) -> None:
     """Score unscored articles with a small Claude model. Idempotent by
-    article_id; runs until caught up or batch_limit."""
+    article_id; runs until caught up or batch_limit. `tickers` restricts
+    scoring to a pilot set — collection is free, extraction is metered, so
+    the news-feature experiment spends only on symbols in the pilot."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         print("  ANTHROPIC_API_KEY not set — raw news accumulating, extraction deferred")
@@ -119,7 +122,10 @@ def extract_events(raw_file: Path, events_file: Path, batch_limit: int = 2000) -
 
     import anthropic
 
-    raw = pd.read_parquet(raw_file).drop_duplicates("article_id")
+    raw = pd.read_parquet(raw_file)
+    if tickers is not None:
+        raw = raw[raw["ticker"].isin(set(tickers))]
+    raw = raw.drop_duplicates("article_id")
     done: set[str] = set()
     if events_file.is_file():
         done = set(pd.read_parquet(events_file, columns=["article_id"])["article_id"])
