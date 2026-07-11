@@ -1,6 +1,9 @@
 # SignalEngine
 
-Swing-trading ML prediction engine over the EdStock dataset. Replaces the 2024
+Swing-trading ML prediction engine over the EdStock dataset.
+
+> **Docs**: plain-English overview, architecture & tech choices, component
+> reference, and the financial method — in [docs/](docs/README.md). Replaces the 2024
 BulkAnalysis project (indicator snapshots + rules + a leaky RandomForest) with a
 modern pipeline:
 
