@@ -40,6 +40,24 @@ FEATURE_COLUMNS = [
 # Columns carried through for labeling/backtesting/reporting, not fed to the model.
 META_COLUMNS = ["ticker", "date", "open", "high", "low", "close", "atr_14"]
 
+# The 11 SPDR sector ETFs that instruments.parquet maps GICS sectors onto.
+# Fixed list (not derived from data) so pandas category codes are identical
+# at train time and predict time regardless of which sectors appear.
+SECTOR_CODES = ["XLB", "XLC", "XLE", "XLF", "XLI", "XLK", "XLP", "XLRE", "XLU", "XLV", "XLY"]
+
+
+def feature_frame(panel: pd.DataFrame, include_sector: bool = False) -> pd.DataFrame:
+    """The model input matrix. With include_sector, `sector` rides along as a
+    pandas categorical that LightGBM splits natively (subset splits, not
+    ordinal); crypto/unmapped rows are NaN, which LightGBM routes on its own."""
+    if not include_sector:
+        return panel[FEATURE_COLUMNS]
+    X = panel[FEATURE_COLUMNS].copy()
+    sector = panel["sector"] if "sector" in panel.columns else pd.Series(pd.NA, index=panel.index)
+    sector = sector.where(sector.isin(SECTOR_CODES))  # unknown codes -> NaN, not an error
+    X["sector"] = pd.Categorical(sector, categories=SECTOR_CODES)
+    return X
+
 
 def build_features(
     prices: pd.DataFrame,

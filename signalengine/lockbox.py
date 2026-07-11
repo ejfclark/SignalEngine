@@ -40,7 +40,7 @@ def split_lockbox(cfg: Config, labeled: pd.DataFrame) -> tuple[pd.DataFrame, pd.
 def lockbox_eval(cfg: Config, asset: str, direction: str = "long") -> dict:
     from .cli import _tag, build_dataset
     from .model.train import _make_model
-    from .features.pipeline import FEATURE_COLUMNS
+    from .features.pipeline import feature_frame
 
     tag = _tag(asset, direction)
     labeled = build_dataset(cfg, asset, direction)
@@ -51,9 +51,10 @@ def lockbox_eval(cfg: Config, asset: str, direction: str = "long") -> dict:
         raise ValueError("lockbox period contains no labeled rows")
 
     model = _make_model(cfg, history["label"].to_numpy())
-    model.fit(history[FEATURE_COLUMNS], history["label"])
+    model.fit(feature_frame(history, cfg.model.sector_feature), history["label"])
     scored = lockbox.copy()
-    scored["probability"] = model.predict_proba(lockbox[FEATURE_COLUMNS])[:, 1]
+    scored["probability"] = model.predict_proba(
+        feature_frame(lockbox, cfg.model.sector_feature))[:, 1]
 
     bt = cfg.backtest_for(tag)
     stats = run_backtest(

@@ -22,7 +22,7 @@ from lightgbm import LGBMClassifier
 from sklearn.metrics import roc_auc_score
 
 from ..config import Config
-from ..features.pipeline import FEATURE_COLUMNS
+from ..features.pipeline import feature_frame
 from .splits import purged_walk_forward
 
 MODEL_FILE = "model.joblib"
@@ -78,7 +78,7 @@ def train_walk_forward(labeled: pd.DataFrame, cfg: Config) -> TrainResult:
     if data.empty:
         raise ValueError("No labeled rows — is the price history long enough for the horizon?")
 
-    X = data[FEATURE_COLUMNS]
+    X = feature_frame(data, cfg.model.sector_feature)
     y = data["label"].to_numpy()
 
     fold_rows = []
@@ -145,7 +145,7 @@ def train_walk_forward(labeled: pd.DataFrame, cfg: Config) -> TrainResult:
     final_model = CalibratedModel(fitted, iso) if iso is not None else fitted
 
     importance = (
-        pd.DataFrame({"feature": FEATURE_COLUMNS, "importance": final_model.feature_importances_})
+        pd.DataFrame({"feature": list(X.columns), "importance": final_model.feature_importances_})
         .sort_values("importance", ascending=False)
         .reset_index(drop=True)
     )

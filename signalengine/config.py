@@ -50,6 +50,9 @@ class ModelConfig:
     # thing in every fold. Off until benched in.
     calibrate: bool = False
     calibration_frac: float = 0.2
+    # Exp S1: sector as a native LightGBM categorical feature, letting one
+    # pooled model learn per-sector behavior. Off until benched in.
+    sector_feature: bool = False
 
 
 @dataclass

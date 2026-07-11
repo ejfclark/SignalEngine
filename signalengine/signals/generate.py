@@ -11,7 +11,7 @@ import pandas as pd
 from lightgbm import LGBMClassifier
 
 from ..config import Config
-from ..features.pipeline import FEATURE_COLUMNS
+from ..features.pipeline import feature_frame
 
 
 def generate_signals(
@@ -30,7 +30,8 @@ def generate_signals(
         print(f"  (skipping {stale.sum()} tickers with no bar since {cutoff.date()})")
         latest = latest[~stale]
 
-    latest["probability"] = model.predict_proba(latest[FEATURE_COLUMNS])[:, 1]
+    latest["probability"] = model.predict_proba(
+        feature_frame(latest, cfg.model.sector_feature))[:, 1]
 
     # Reference levels off the latest close; live entry will be next open.
     # Shorts mirror: stop above the entry, profit target below.

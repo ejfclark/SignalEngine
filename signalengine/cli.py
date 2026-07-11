@@ -290,6 +290,8 @@ def cmd_bench(cfg: Config, args) -> None:
 
     if args.calibrate:
         cfg.model.calibrate = True
+    if args.sector:
+        cfg.model.sector_feature = True
     payload = run_bench(cfg, args.asset, args.name, args.direction, args.query, args.universe)
     print(f"\nbench '{args.name}' ({args.asset}): mean AUC {payload['mean_auc']:.4f}, "
           f"min AUC {payload['min_auc']:.4f}")
@@ -369,6 +371,8 @@ def main() -> None:
                          help="meta-labeling candidate filter (pandas query on the panel)")
     p_bench.add_argument("--calibrate", action="store_true",
                          help="per-fold isotonic calibration (experiment flag)")
+    p_bench.add_argument("--sector", action="store_true",
+                         help="sector as a LightGBM categorical feature (Exp S1 flag)")
     p_bench.add_argument("--universe", default=None,
                          help="restrict to a universe file (A/B universe benching)")
     p_cmp = sub.add_parser("bench-compare", help="compare two bench runs")

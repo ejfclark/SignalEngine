@@ -16,6 +16,13 @@ commit. ~Half of everything tried so far was correctly rejected — that is the
 system working. Never present backtest numbers without costs, and never let
 any experiment touch the lockbox (below).
 
+**Before proposing or running ANY experiment, read `docs/05-experiments.md`**
+— the ledger of every experiment's hypothesis, verdict, and evidence. Don't
+re-run rejected ideas without new evidence; don't trust single-run bench
+comparisons (LightGBM cross-run variance at a single threshold exceeds most
+claimed wins — use multi-seed sweeps or same-prediction `bench-variants`).
+Append your result to the ledger when an experiment concludes.
+
 ## Commands
 
 ```
