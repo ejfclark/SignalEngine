@@ -71,8 +71,14 @@ gate_column = "breadth_20d"
 gate_min = 0.30
 
 # Exp B1: with the candidate filter, 0.65 is the stock sweet spot (Sharpe 1.59).
+# Exp S3.3 2026-07-11: VIX entry gate — the book's edge lives in elevated-vol
+# tape (5 seeds, same predictions: exp65 +0.32%±0.27 -> +0.89%±0.48, Sharpe
+# 0.49 -> 1.56, maxDD ~-39% -> ~-14%, better in 4/5 seeds; low-VIX entries
+# negative in every seed). Evidence: docs/05-experiments.md #14-15.
 [backtest.stock]
 probability_threshold = 0.65
+gate_column = "vix"
+gate_min = 18.0
 
 # Shorts trade at the strict threshold only (adopted from the shorts benches);
 # crypto shorts are deliberately UNGATED — breakdowns short fine in any tape.

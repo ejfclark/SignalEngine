@@ -196,5 +196,6 @@ def report(cfg: Config) -> pd.DataFrame:
         tot = fin["net_return"].sum() if len(fin) else 0.0
         n_open = int((mine["status"].isin(("pending", "open"))).sum())
         print(f"{tag:<14} {n_open:>5} {len(fin):>7} {hit:>7.1%} {exp:>8.2%} {tot:>8.2%}")
-    print("\nbacktest expectation: crypto +0.85%/trade, crypto-short +0.96%, stock +0.3% (thin)")
+    print("\nbacktest expectation: crypto +0.85%/trade, crypto-short +0.96%, "
+          "stock +0.89% (VIX-gated, seed-mean)")
     return ledger
