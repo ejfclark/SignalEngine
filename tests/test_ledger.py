@@ -117,3 +117,24 @@ def test_open_position_stays_open(cfg, monkeypatch):
     result = L.update_positions(cfg)
     assert result == {"filled": 1, "closed": 0}
     assert L.load_ledger(cfg).iloc[0]["status"] == "open"
+
+def test_record_applies_book_gate(cfg):
+    cfg.backtest_overrides = {"crypto": {"gate_column": "breadth_20d", "gate_min": 0.30}}
+    write_signals(cfg, "crypto", [
+        {"ticker": "BTC", "date": "2026-07-01", "probability": 0.72,
+         "stop": 95.0, "target": 112.0, "breadth_20d": 0.45},
+        {"ticker": "ETH", "date": "2026-07-01", "probability": 0.71,
+         "stop": 9.0, "target": 12.0, "breadth_20d": 0.10},  # gated out
+    ])
+    assert L.record_signals(cfg) == 1
+    assert list(L.load_ledger(cfg)["ticker"]) == ["BTC"]
+
+
+def test_record_refuses_when_gate_column_missing(cfg, capsys):
+    cfg.backtest_overrides = {"crypto": {"gate_column": "breadth_20d", "gate_min": 0.30}}
+    write_signals(cfg, "crypto", [
+        {"ticker": "BTC", "date": "2026-07-01", "probability": 0.72,
+         "stop": 95.0, "target": 112.0},  # no breadth_20d column at all
+    ])
+    assert L.record_signals(cfg) == 0
+    assert "refusing to record" in capsys.readouterr().out

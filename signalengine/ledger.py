@@ -76,6 +76,15 @@ def record_signals(cfg: Config) -> int:
             continue
         signals = pd.read_csv(path, parse_dates=["date"])
         picks = signals[signals["probability"] >= rule["threshold"]]
+        # Apply the book's entry gate — the same rule the backtest was adopted
+        # under. A paper book recorded without its gate validates nothing.
+        bt = cfg.backtest_for(tag)
+        if bt.gate_column:
+            if bt.gate_column not in picks.columns:
+                print(f"  ! {tag}: gate column '{bt.gate_column}' missing from "
+                      f"{path.name} — refusing to record ungated entries")
+                continue
+            picks = picks[picks[bt.gate_column] >= bt.gate_min]
         for _, s in picks.iterrows():
             duplicate = (
                 (ledger["ticker"] == s["ticker"])

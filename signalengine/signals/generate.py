@@ -49,6 +49,9 @@ def generate_signals(
             "stop_pct", "target_pct", "reward_risk", "horizon_days"]
     if "sector" in latest.columns:
         cols.append("sector")
+    # Regime values at signal time ride along so the ledger can apply each
+    # book's entry gate (cfg.backtest_for(tag).gate_column) at record time.
+    cols += [c for c in ("breadth_20d", "vix", "btc_ret_20d") if c in latest.columns]
     return (
         latest[cols]
         .sort_values("probability", ascending=False)
