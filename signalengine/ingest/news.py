@@ -135,27 +135,34 @@ def extract_events(raw_file: Path, events_file: Path, batch_limit: int = 2000,
         return
 
     client = anthropic.Anthropic(api_key=api_key)
+
+    def score(a) -> dict | None:
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001", max_tokens=200,
+            messages=[{"role": "user",
+                       "content": EXTRACTION_PROMPT % (a["title"], a["description"])}],
+        )
+        parsed = json.loads(msg.content[0].text)
+        return {
+            "article_id": a["article_id"],
+            "published": a["published"],
+            "event_type": parsed.get("event_type", "other"),
+            "sentiment": float(parsed.get("sentiment", 0.0)),
+            "materiality": float(parsed.get("materiality", 0.0)),
+        }
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     rows, failures = [], 0
-    for _, a in todo.iterrows():
-        try:
-            msg = client.messages.create(
-                model="claude-haiku-4-5-20251001", max_tokens=200,
-                messages=[{"role": "user",
-                           "content": EXTRACTION_PROMPT % (a["title"], a["description"])}],
-            )
-            parsed = json.loads(msg.content[0].text)
-            rows.append({
-                "article_id": a["article_id"],
-                "published": a["published"],
-                "event_type": parsed.get("event_type", "other"),
-                "sentiment": float(parsed.get("sentiment", 0.0)),
-                "materiality": float(parsed.get("materiality", 0.0)),
-            })
-        except Exception:
-            failures += 1
-            if failures > 25:
-                print("  too many extraction failures — stopping this run", flush=True)
-                break
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(score, a) for _, a in todo.iterrows()]
+        for future in as_completed(futures):
+            try:
+                rows.append(future.result())
+            except Exception:
+                failures += 1
+    if failures > len(todo) * 0.2:
+        print(f"  WARNING: {failures}/{len(todo)} extraction failures this batch", flush=True)
     if rows:
         added, total = upsert(events_file, pd.DataFrame(rows), ["article_id"])
         print(f"  {events_file.name}: +{added:,} scored (total {total:,}, {failures} failures)")
