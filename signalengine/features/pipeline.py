@@ -21,6 +21,14 @@ FEATURE_COLUMNS = [
     "dist_20d_high", "dist_60d_high", "days_since_20d_high", "higher_lows_20", "vol_dryup",
     # fundamentals (stocks only)
     "pe_ratio", "days_to_earnings",
+    # NOTE: earnings-event features (days_since_earnings, earnings_reaction,
+    # eps_chg_63d) are computed in indicators.py but REJECTED from the model
+    # (Exp S3.1 2026-07-12: hurt the gated book; only 36% coverage). Retest
+    # once fundamentals history deepens or FMP surprise data exists.
+    # behavioral identity (Exp S3.1, ADOPTED 2026-07-12): who this ticker is,
+    # so regime features can interact with character — gated book
+    # +0.89% -> +1.59%/trade, Sharpe 1.56 -> 2.31, 5/5 seeds
+    "beta_spy_120d", "corr_spy_120d", "idio_vol_share", "vix_sens_120d", "dollar_vol_rank",
     # cross-sectional: where this ticker sits vs the rest of the universe today
     "rank_ret_20d", "rank_vol_20d", "rank_volume_z",
     # universe regime
@@ -81,6 +89,12 @@ def build_features(
     panel["rank_vol_20d"] = by_date["vol_20d"].rank(pct=True)
     panel["rank_volume_z"] = by_date["volume_z"].rank(pct=True)
 
+    # Liquidity identity: where this ticker's 20d dollar volume sits in the
+    # universe today (illiquid names gap through stops; the model should know).
+    dv = (panel["close"] * panel["volume"]).groupby(panel["ticker"]).transform(
+        lambda s: s.rolling(20, min_periods=10).mean())
+    panel["dollar_vol_rank"] = dv.groupby(panel["date"]).rank(pct=True)
+
     panel = panel.merge(build_breadth(panel), on="date", how="left")
 
     if with_market_context:
@@ -112,6 +126,46 @@ def build_features(
                     left_on=["date", "sector"], right_on=["date", "code"], how="left",
                 ).drop(columns=["code"], errors="ignore")
                 panel["rel_sector_20d"] = panel["ret_20d"] - panel["sector_ret_20d"]
+
+        # Behavioral identity vs the market (Exp S3.1): rolling beta/correlation
+        # to SPY, idiosyncratic share, and sensitivity to VIX changes. All
+        # look-back rolling windows over daily returns.
+        if etf_prices is not None and len(etf_prices):
+            spy_px = etf_prices[etf_prices["ticker"] == "SPY"].sort_values("date")
+            if len(spy_px):
+                panel = panel.merge(pd.DataFrame({
+                    "date": spy_px["date"],
+                    "spy_ret_1d": spy_px["close"].pct_change(),
+                }), on="date", how="left")
+            if "vix" in panel.columns:
+                vday = panel[["date", "vix"]].dropna().drop_duplicates("date").sort_values("date")
+                panel = panel.merge(pd.DataFrame({
+                    "date": vday["date"], "vix_chg_1d_tmp": vday["vix"].diff(),
+                }), on="date", how="left")
+
+            def _behavioral(d: pd.DataFrame) -> pd.DataFrame:
+                out = pd.DataFrame(index=d.index)
+                if "spy_ret_1d" in d:
+                    var = d["spy_ret_1d"].rolling(120, min_periods=60).var()
+                    out["beta_spy_120d"] = (
+                        d["ret_1d"].rolling(120, min_periods=60).cov(d["spy_ret_1d"]) / var
+                    )
+                    out["corr_spy_120d"] = (
+                        d["ret_1d"].rolling(120, min_periods=60).corr(d["spy_ret_1d"])
+                    )
+                if "vix_chg_1d_tmp" in d:
+                    out["vix_sens_120d"] = (
+                        d["ret_1d"].rolling(120, min_periods=60).corr(d["vix_chg_1d_tmp"])
+                    )
+                return out
+
+            if "spy_ret_1d" in panel.columns or "vix_chg_1d_tmp" in panel.columns:
+                behav = panel.groupby("ticker", sort=False).apply(
+                    _behavioral, include_groups=False).reset_index(level=0, drop=True)
+                for col in behav.columns:
+                    panel[col] = behav[col]
+                if "corr_spy_120d" in panel.columns:
+                    panel["idio_vol_share"] = 1.0 - panel["corr_spy_120d"] ** 2
 
     # Crypto positioning: perp funding (daily mean of 8h rates) + 7-day mean.
     if derivatives is not None and len(derivatives):

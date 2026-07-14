@@ -62,6 +62,9 @@ Adopted numbers are annotated where they live in `config.toml`.
 | 14 | 2026-07-11 | S3.0 diagnostic (scratch script; pooled `s1-base-seed*` OOS trades) | Does the champion's edge vary by behavioral segment? | **HETEROGENEITY CONFIRMED** | (a) Edge is regime-conditional: at signal level, ALL beta segments profitable when entry-day VIX elevated (+0.71/+0.15/+0.75%, 5/5 & 4/5 seeds), ALL negative in low-VIX tape (mid/high beta −0.85 to −0.99%, 0/5 seeds). (b) The stock book is de facto all-tech: 16,914/17,157 sector-mapped signals are XLK — explains S1's null; makes universe diversification (blocked on fundamentals) the real segmentation lever. (c) Low-beta is the only unconditionally positive segment |
 | 15 | 2026-07-11 | S3.3 VIX gate (same-prediction test over `s1-base-seed*_oos`) | Gate stock entries on elevated VIX | **ADOPTED** | `[backtest.stock] gate_column="vix", gate_min=18`. Same predictions, 5 seeds, thr 0.65: exp +0.32%±0.27→+0.89%±0.48, Sharpe 0.49→1.56, maxDD ~−39%→~−14%, better in 4/5 seeds; ~50 trades/yr remain. Caveat: hypothesis derived from the same OOS window it was tested on (though threshold 18 is a natural prior, not tuned — 20 and 25 also positive); the paper ledger is the true validator. Uncovered + fixed alongside: the paper ledger never applied ANY book's gate (crypto breadth gate wasn't reaching the paper book) — signals CSVs now carry regime columns and `record_signals` enforces `backtest_for(tag)` gates |
 
+| 16 | 2026-07-12 | `s31-*-seed*` + `s31_sweep.json` | Exp S3.1a: behavioral-identity features (beta_spy_120d, corr_spy_120d, idio_vol_share, vix_sens_120d, dollar_vol_rank) | **ADOPTED** | Strongest result to date. Ungated: better at every threshold (thr .65: +0.32→+0.72%). Under production VIX≥18 gate: +0.89%±0.48→+1.59%±0.62/trade, Sharpe 1.56→2.31, paired better-or-flat 5/5 seeds (+0.84/+0.40/+1.08/+1.20/+0.00pp), unchanged trade count. Caveat: mean fold AUC −0.005 in 5/5 seeds (mid-ranking blurs, top tail sharpens — expectancy improved everywhere, so accepted with the deviation noted) |
+| 17 | 2026-07-12 | same sweep, `earn`/`both` arms | Exp S3.1b: earnings-event features (earnings_reaction, days_since_earnings, eps_chg_63d — PEAD via market reaction) | **REJECTED (for now)** | Ungated looked alive (+0.55% at .65) but under the production gate it HURT (+0.89→+0.26%), and `both` diluted behavioral everywhere. Only 36% coverage (fundamentals start 2024). Code stays in indicators.py, columns out of FEATURE_COLUMNS. Retest when: fundamentals history deepens, FMP consensus-surprise data exists, or as a standalone event study. This also weakens the near-term prior for LLM earnings extraction |
+
 ## Queued / designed but not run
 
 - **Exp S2** — per-sector models vs pooled (tech vs non-tech first). Only if S1
@@ -75,6 +78,20 @@ Adopted numbers are annotated where they live in `config.toml`.
   Full 130-ticker pilot extraction (~$61 sync / ~$31 batch) only after both
   gates pass. Tiingo raw collection continues free meanwhile; extraction of
   the live feed costs ~$0.70/day at current volume.
+- **Earnings-announcement LLM extraction** — targeted slice of the news
+  pipeline: extract only articles within ±3d of reconstructed earnings dates
+  (schema already has earnings_beat/miss, guidance_raise/cut). Adds the WHY
+  behind `earnings_reaction` (guidance direction drives drift more than the
+  headline beat). Prior depends on the S3.1 earnings-arm verdict; size the
+  article subset (free) before proposing spend. ~1 earnings cycle of news
+  history so event-study only, not model features yet.
+- **Influencer attribution in extraction schema** — add `notable_person` /
+  `influencer_statement` to the extraction schema BEFORE any big extraction
+  run so scored articles carry speaker attribution (Musk/Trump etc.).
+  Hypothesis: attention spikes predict multi-day continuation/reversal
+  (strongest prior in crypto: DOGE, TRUMP). NOTE: catching the initial pop is
+  structurally impossible at daily bars with next-open entry — the target is
+  the drift after, never the pop.
 - **Earnings surprises features** — blocked on FMP key.
 - **Expanded-universe re-test** — blocked on fundamentals coverage (FMP or
   Tiingo add-on); see #11.

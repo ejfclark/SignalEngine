@@ -170,8 +170,38 @@ def compute_indicators(g: pd.DataFrame) -> pd.DataFrame:
 
     # Stock fundamentals when present
     if "earnings_date" in g:
-        days = (g["earnings_date"] - g["date"]).dt.days
+        ed = pd.to_datetime(g["earnings_date"]).dt.normalize()
+        days = (ed - g["date"]).dt.days
         g["days_to_earnings"] = days.where((days >= 0) & (days <= 90))
+
+        # Past announcements, reconstructed from the as-of "next earnings"
+        # series: when yesterday's next-date has passed and the value changes,
+        # that date was an announcement. Uses only prior rows' values, so
+        # truncating the input can never change earlier features.
+        prev = ed.shift(1)
+        rolled = prev.where(prev.notna() & (prev != ed) & (prev <= g["date"]))
+        last_event = rolled.ffill()
+        since = (g["date"] - last_event).dt.days
+        g["days_since_earnings"] = since.where((since >= 0) & (since <= 90))
+
+        # Market's grade of the report: close before the event to the first
+        # close after it (2-day span tolerates before/after-hours ambiguity).
+        # Valid only from that post bar onward — never on the event day itself.
+        g["earnings_reaction"] = np.nan
+        for event in rolled.dropna().unique():
+            pre = g.loc[g["date"] < event, "close"]
+            post = g.loc[g["date"] > event]
+            if pre.empty or post.empty or pre.iloc[-1] <= 0:
+                continue
+            reaction = post["close"].iloc[0] / pre.iloc[-1] - 1.0
+            valid = (last_event == event) & (g["date"] >= post["date"].iloc[0])
+            g.loc[valid, "earnings_reaction"] = reaction
+        g["earnings_reaction"] = g["earnings_reaction"].where(g["days_since_earnings"].notna())
+    if "eps" in g:
+        # Reported-EPS drift at quarterly cadence: did the latest report move
+        # trailing EPS? (Consensus surprise needs estimate data we don't have.)
+        base_eps = g["eps"].shift(63).abs()
+        g["eps_chg_63d"] = (g["eps"].diff(63) / base_eps.replace(0.0, np.nan)).clip(-3, 3)
     if "pe" in g:
         g["pe_ratio"] = g["pe"].where(g["pe"] > 0)
 
