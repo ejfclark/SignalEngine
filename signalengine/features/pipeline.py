@@ -25,6 +25,10 @@ FEATURE_COLUMNS = [
     # eps_chg_63d) are computed in indicators.py but REJECTED from the model
     # (Exp S3.1 2026-07-12: hurt the gated book; only 36% coverage). Retest
     # once fundamentals history deepens or FMP surprise data exists.
+    # eps_chg_yoy (Exp S3.1c, free YoY-vs-consensus proxy) REJECTED 2026-07-13:
+    # hurt the gated book in 5/5 seeds. Computed in indicators.py, not fed to
+    # the model. Real consensus-surprise data (FMP or similar) is still the
+    # only path to a genuine earnings-surprise feature — see docs/05-experiments.md.
     # behavioral identity (Exp S3.1, ADOPTED 2026-07-12): who this ticker is,
     # so regime features can interact with character — gated book
     # +0.89% -> +1.59%/trade, Sharpe 1.56 -> 2.31, 5/5 seeds

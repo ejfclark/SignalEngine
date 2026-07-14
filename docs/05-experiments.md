@@ -65,6 +65,8 @@ Adopted numbers are annotated where they live in `config.toml`.
 | 16 | 2026-07-12 | `s31-*-seed*` + `s31_sweep.json` | Exp S3.1a: behavioral-identity features (beta_spy_120d, corr_spy_120d, idio_vol_share, vix_sens_120d, dollar_vol_rank) | **ADOPTED** | Strongest result to date. Ungated: better at every threshold (thr .65: +0.32→+0.72%). Under production VIX≥18 gate: +0.89%±0.48→+1.59%±0.62/trade, Sharpe 1.56→2.31, paired better-or-flat 5/5 seeds (+0.84/+0.40/+1.08/+1.20/+0.00pp), unchanged trade count. Caveat: mean fold AUC −0.005 in 5/5 seeds (mid-ranking blurs, top tail sharpens — expectancy improved everywhere, so accepted with the deviation noted) |
 | 17 | 2026-07-12 | same sweep, `earn`/`both` arms | Exp S3.1b: earnings-event features (earnings_reaction, days_since_earnings, eps_chg_63d — PEAD via market reaction) | **REJECTED (for now)** | Ungated looked alive (+0.55% at .65) but under the production gate it HURT (+0.89→+0.26%), and `both` diluted behavioral everywhere. Only 36% coverage (fundamentals start 2024). Code stays in indicators.py, columns out of FEATURE_COLUMNS. Retest when: fundamentals history deepens, FMP consensus-surprise data exists, or as a standalone event study. This also weakens the near-term prior for LLM earnings extraction |
 
+| 18 | 2026-07-13 | `s31c-*-seed*` + `s31c_sweep.json` | Exp S3.1c: eps_chg_yoy (free YoY-vs-consensus proxy, same quarter one year back) added on top of the adopted champion (base + S3.1 behavioral) | **REJECTED** | Judged under the production VIX≥18 gate (the actually-traded rule), 5 seeds: exp +1.59%±0.62 → +1.05%±0.57, Sharpe 2.31 → 1.66, WORSE in 5/5 seeds (−0.16/−0.31/−0.57/−1.00/−0.70pp). A YoY comparison is still not a real surprise (no consensus estimate), and it apparently adds noise the model can't use. Code stays in indicators.py (not fed to model). Confirms: a genuine earnings-surprise feature still needs real consensus data (FMP or similar) — no free proxy has worked yet (2 attempts: eps_chg_63d/earnings_reaction in S3.1b, eps_chg_yoy in S3.1c) |
+
 ## Queued / designed but not run
 
 - **Exp S2** — per-sector models vs pooled (tech vs non-tech first). Only if S1
@@ -93,5 +95,16 @@ Adopted numbers are annotated where they live in `config.toml`.
   structurally impossible at daily bars with next-open entry — the target is
   the drift after, never the pop.
 - **Earnings surprises features** — blocked on FMP key.
+- **Crypto open interest features** — `crypto_derivatives.open_interest` looked
+  0.1% covered (data_inventory.csv, 2026-07-13) but that's ~148.7k rows of
+  permanent NaN from the initial 5y backfill (the ingest job stamps only the
+  LAST row of each fetch batch with the current-snapshot OI value — during
+  backfill that batch was years long, so almost everything landed on NaN).
+  Nightly incremental runs correctly stamp ~125/136 tickers/day since around
+  2026-07-08 and it will keep accumulating — no code fix needed, no spend.
+  Blocked only on calendar time: needs a few weeks of daily snapshots before
+  an `oi_chg_Nd` rolling feature is meaningful (rising OI + rising price =
+  trend confirmation; rising OI + flat/falling price often precedes a
+  squeeze). Do not bench before ~early August 2026.
 - **Expanded-universe re-test** — blocked on fundamentals coverage (FMP or
   Tiingo add-on); see #11.

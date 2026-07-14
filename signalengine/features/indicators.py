@@ -202,6 +202,13 @@ def compute_indicators(g: pd.DataFrame) -> pd.DataFrame:
         # trailing EPS? (Consensus surprise needs estimate data we don't have.)
         base_eps = g["eps"].shift(63).abs()
         g["eps_chg_63d"] = (g["eps"].diff(63) / base_eps.replace(0.0, np.nan)).clip(-3, 3)
+
+        # YoY comparison (~252 trading days = same quarter, one year back) as a
+        # free proxy for "expected": seasonal earnings growth rather than
+        # sequential quarter noise. Still not analyst consensus (needs FMP/
+        # similar), but closer to "surprise" than a plain trailing delta.
+        base_eps_yoy = g["eps"].shift(252).abs()
+        g["eps_chg_yoy"] = (g["eps"].diff(252) / base_eps_yoy.replace(0.0, np.nan)).clip(-3, 3)
     if "pe" in g:
         g["pe_ratio"] = g["pe"].where(g["pe"] > 0)
 

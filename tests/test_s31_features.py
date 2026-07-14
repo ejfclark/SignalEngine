@@ -85,3 +85,27 @@ def test_dollar_vol_rank_orders_by_liquidity():
     panel = build_features(pd.concat([a, b], ignore_index=True), with_market_context=False)
     last_day = panel[panel["date"] == panel["date"].max()].set_index("ticker")
     assert last_day.loc["B", "dollar_vol_rank"] > last_day.loc["T", "dollar_vol_rank"]
+
+
+def test_eps_chg_yoy_uses_full_year_lookback():
+    n = 400
+    eps = pd.Series([1.0] * 252 + [1.5] * (n - 252))
+    df = make_ohlcv([100.0] * n)
+    df["eps"] = eps
+    g = compute_indicators(df)
+    # At day 300 (48 trading days after the step), YoY compares to day 48
+    # (eps=1.0), a full year back -- not the 63d quarterly window.
+    assert g["eps_chg_yoy"].iloc[300] == pytest.approx(0.5)
+    assert g["eps_chg_yoy"].iloc[:252].isna().all()
+
+
+def test_eps_chg_yoy_no_lookahead():
+    rng = np.random.default_rng(9)
+    df = make_ohlcv(100 + np.cumsum(rng.normal(0, 1, 400)))
+    df["eps"] = np.repeat(rng.normal(2, 0.3, 8), 50)
+    full = compute_indicators(df)
+    trunc = compute_indicators(df.iloc[:300].copy())
+    pd.testing.assert_frame_equal(
+        full.iloc[:300][["eps_chg_yoy"]].reset_index(drop=True),
+        trunc[["eps_chg_yoy"]].reset_index(drop=True),
+    )
