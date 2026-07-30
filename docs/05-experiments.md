@@ -21,6 +21,13 @@ Adopted numbers are annotated where they live in `config.toml`.
 
 ## Standing methodology facts (learned the hard way)
 
+- **Any FEATURE_COLUMNS change must be benched on BOTH `stock` and `crypto`**,
+  even if the hypothesis and diagnostic (e.g. S3.0) only looked at one asset —
+  `FEATURE_COLUMNS` is shared, so an adopted change silently applies to the
+  other book too. Learned the hard way: S3.1 (#16) was only ever run via
+  `run_bench(cfg, "stock", ...)`; crypto trained on 4 permanently-NaN columns
+  for weeks before anyone checked (see #19) — harmless in that instance, but
+  it should have been caught by a bench, not discovered during an incident.
 - **LightGBM cross-run variance is large.** Same code + same data can swing
   expectancy well beyond ±0.3pp at a single threshold because the greedy
   slot-allocation backtest amplifies small prediction changes (observed
@@ -67,7 +74,16 @@ Adopted numbers are annotated where they live in `config.toml`.
 
 | 18 | 2026-07-13 | `s31c-*-seed*` + `s31c_sweep.json` | Exp S3.1c: eps_chg_yoy (free YoY-vs-consensus proxy, same quarter one year back) added on top of the adopted champion (base + S3.1 behavioral) | **REJECTED** | Judged under the production VIX≥18 gate (the actually-traded rule), 5 seeds: exp +1.59%±0.62 → +1.05%±0.57, Sharpe 2.31 → 1.66, WORSE in 5/5 seeds (−0.16/−0.31/−0.57/−1.00/−0.70pp). A YoY comparison is still not a real surprise (no consensus estimate), and it apparently adds noise the model can't use. Code stays in indicators.py (not fed to model). Confirms: a genuine earnings-surprise feature still needs real consensus data (FMP or similar) — no free proxy has worked yet (2 attempts: eps_chg_63d/earnings_reaction in S3.1b, eps_chg_yoy in S3.1c) |
 
-| 19 | 2026-07-30 | `signalengine monitor` (new tool, ledger #2f36f2f) | Does the paper ledger's realized performance sit inside the crypto-long model's own fold-to-fold expectancy range? | **DIVERGENCE FLAGGED** | Live crypto: −4.03%/trade over 82 closed trades. Current model's own 5-fold range: [−0.54%, +3.18%]. Live is below even the worst historical fold, past a 2-SE live-noise margin. Manual investigation same day ruled out: threshold/gate leakage (0/133 entries below 0.65), obviously broken fills (stop exits land at stated stop price), and BTC-crash confound (BTC flat-to-up over the window). NOT yet resolved: root cause unknown. Do not change the crypto model/features until this is explained — first suspect is train/live feature-computation parity (something in the daily incremental pipeline diverging from the batch-rebuilt bench panel), not model quality |
+| 19 | 2026-07-30 | `signalengine monitor` (new tool, ledger #2f36f2f) | Does the paper ledger's realized performance sit inside the crypto-long model's own fold-to-fold expectancy range? | **DIVERGENCE FLAGGED, ROOT CAUSE FOUND: adverse regime, not a bug** | Live crypto: −4.03%/trade over 82 closed trades vs the model's own 5-fold range [−0.54%, +3.18%] — below even the worst historical fold. Audit ruled out, in order: (1) gate/threshold leakage — clean, 0/133 entries below 0.65; (2) fill mechanics — stops exit at stated prices, no anomaly; (3) feature-computation parity — REAL PROCESS BUG FOUND but proven inert: S3.1 (#16) was benched ONLY on `run_bench(cfg, "stock", ...)` yet adopted into the single shared `FEATURE_COLUMNS`, so crypto has trained on 4 permanently-100%-NaN columns (beta/corr/idio_vol/vix_sens vs SPY — crypto's `build_dataset` never passes `etf_prices`) since 2026-07-12 without ever being benched; controlled with/without-columns bench on crypto came back byte-identical (LightGBM correctly never splits on all-NaN) — NOT the cause, but a genuine discipline gap (see process fix below); (4) model calibration — probability bins 0.65-0.85 all show ~15% hit rate / ~-4% expectancy with NO monotonic improvement at higher probability, i.e. the model's confidence carried zero live information this window; (5) BTC-crash confound — ruled out, BTC flat-to-up (~62k→64k) over the window; (6) **broad altcoin regime — CONFIRMED CAUSE**: 72% of all non-major coins negative, median return −7.9%, over the exact ledger window (2026-07-08 to 07-29) — a systematic alt-bleed-while-BTC-holds regime that hurts any long-biased altcoin book regardless of stock-picking quality. Verdict: explained adverse regime, not a broken system — do not change the crypto model on this evidence alone. Process fix adopted: any FEATURE_COLUMNS change must be benched on BOTH `stock` and `crypto` before adoption, even if the hypothesis originated on one asset. Queued idea: an alt-market-breadth feature (crypto's analogue to `breadth_20d`) since `btc_ret_20d` alone didn't let the model see this regime coming |
+
+- **Crypto alt-market-breadth feature** — the crypto panel has `btc_ret_20d`/
+  `rel_btc_20d` (BTC as market factor) but nothing capturing breadth of
+  *altcoin* strength the way `breadth_20d` does for the stock universe. The
+  2026-07 alt-bleed-while-BTC-holds regime (#19) went undetected by the
+  model; a feature like "% of the crypto universe above its 20d SMA" could
+  give the model (or a portfolio-level gate, S3.3-style) a chance to reduce
+  exposure heading into that kind of regime. Bench on crypto only — no
+  stock-book equivalent needed since it already has breadth.
 
 ## Queued / designed but not run
 
