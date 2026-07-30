@@ -16,6 +16,8 @@ Engine:
     signalengine train   --asset stock   Build features+labels, walk-forward train, save artifacts
     signalengine backtest --asset stock  Cost-aware backtest over the out-of-sample predictions
     signalengine signals --asset stock   Score the latest bar -> ranked signals with stop/target
+    signalengine monitor                 Flag books where the paper ledger has drifted outside
+                                          the model's own fold-to-fold expectancy range
 
 The dataset is cached in artifacts/<asset>_dataset.parquet; `train --rebuild`
 refreshes it from the data source.
@@ -285,6 +287,17 @@ def cmd_ledger(cfg: Config, args) -> None:
         report(cfg)
 
 
+def cmd_monitor(cfg: Config, args) -> None:
+    from .monitor import run_monitor
+
+    print("Live-vs-backtest divergence check (books with >=30 closed trades):")
+    results = run_monitor(cfg, min_live_trades=args.min_trades)
+    flagged = [r for r in results if r.flagged]
+    if flagged:
+        sys.exit(f"\nDIVERGENCE FLAGGED: {', '.join(r.tag for r in flagged)} — "
+                 f"see docs/05-experiments.md before changing anything")
+
+
 def cmd_bench(cfg: Config, args) -> None:
     from .bench import run_bench
 
@@ -386,6 +399,10 @@ def main() -> None:
     p_lock = sub.add_parser("lockbox-eval", help="one-shot frozen-system eval on the lockbox")
     p_lock.add_argument("--asset", choices=ASSETS, default="stock")
     p_lock.add_argument("--direction", choices=["long", "short"], default="long")
+    p_mon = sub.add_parser("monitor", help="flag books where live ledger performance "
+                                           "has drifted outside the model's own fold range")
+    p_mon.add_argument("--min-trades", type=int, default=30, dest="min_trades",
+                       help="closed trades required per book before judging it (default 30)")
 
     args = parser.parse_args()
     cfg = load_config(args.config)
@@ -399,7 +416,8 @@ def main() -> None:
      "bench-compare": cmd_bench_compare,
      "bench-variants": cmd_bench_variants,
      "ledger": cmd_ledger,
-     "lockbox-eval": cmd_lockbox_eval}[args.command](cfg, args)
+     "lockbox-eval": cmd_lockbox_eval,
+     "monitor": cmd_monitor}[args.command](cfg, args)
 
 
 if __name__ == "__main__":

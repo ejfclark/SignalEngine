@@ -28,6 +28,7 @@ from .splits import purged_walk_forward
 MODEL_FILE = "model.joblib"
 PREDICTIONS_FILE = "oos_predictions.parquet"
 IMPORTANCE_FILE = "feature_importance.csv"
+FOLD_METRICS_FILE = "fold_metrics.csv"
 
 
 class CalibratedModel:
@@ -163,6 +164,9 @@ def save_artifacts(result: TrainResult, directory: Path, asset: str) -> None:
     joblib.dump(result.model, directory / f"{asset}_{MODEL_FILE}")
     result.oos.to_parquet(directory / f"{asset}_{PREDICTIONS_FILE}", index=False)
     result.importance.to_csv(directory / f"{asset}_{IMPORTANCE_FILE}", index=False)
+    # Persisted so the live ledger can be checked against the fold-to-fold
+    # range the model itself produced, instead of a single point estimate.
+    result.fold_metrics.to_csv(directory / f"{asset}_{FOLD_METRICS_FILE}", index=False)
 
 
 def load_model(directory: Path, asset: str) -> LGBMClassifier:
